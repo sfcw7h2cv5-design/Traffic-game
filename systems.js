@@ -2,7 +2,7 @@
 export class NetworkSystems {
  constructor(sim,{length,gantries}){
   this.sim=sim;this.length=length;this.gantries=gantries;
-  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,name:'J'+(id+1),mode:'auto',queue:[],nextArrival:12+id*9,lastRelease:-20,green:false,joined:0}));
+  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,name:'J'+(id+1),mode:'open',queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0}));
   this.phases=[{name:'Normal demand',multiplier:1,duration:90},{name:'Morning rush',multiplier:1.8,duration:180},{name:'Demand easing',multiplier:.75,duration:100},{name:'Stadium traffic',multiplier:2.2,duration:160},{name:'Normal demand',multiplier:1,duration:150}];
   this.phaseIndex=0;this.phase={...this.phases[0],endsAt:90};
   this.work={x:4200,length:150,lanes:[0],announceAt:45,startsAt:150,status:'scheduled',remaining:180,sceneId:null};
@@ -11,9 +11,9 @@ export class NetworkSystems {
   this.objectives=[{id:'flow',title:'Serve 100 vehicles',target:100,progress:0,complete:false},{id:'ambulance',title:'Get an ambulance through',target:1,progress:0,complete:false},{id:'queue',title:'Clear a queue of 5+ vehicles',target:1,progress:0,complete:false},{id:'works',title:'Complete protected roadworks',target:1,progress:0,complete:false}];
  }
  announce(text){this.sim.lastEvent=text;this.sim.eventId++;}
- setRampMode(id,mode){if(!['auto','green','red'].includes(mode)||!this.ramps[id])return false;this.ramps[id].mode=mode;return true;}
+ setRampMode(id,mode){if(!['open','closed'].includes(mode)||!this.ramps[id])return false;this.ramps[id].mode=mode;return true;}
  rampGap(ramp){
-  const s=this.sim,x=ramp.x;
+  const s=this.sim,x=ramp.x-120;
   if(s.signalAt(x,0).mode!=='open'||this.gantries.some((g,i)=>g>x&&g-x<400&&s.signals[i][0].mode!=='open'))return null;
   if(s.incidentBodies().some(i=>i.lane===0&&Math.abs(i.x-x)<180))return null;
   if(s.cars.some(c=>c.lane<0&&Math.abs(c.x-x)<100))return null;
@@ -29,16 +29,21 @@ export class NetworkSystems {
   const s=this.sim;
   for(const r of this.ramps){
    if(s.elapsed>=r.nextArrival){
-    const c=s.spawn(0,r.x,0);s.cars.pop();c.rampApproach=0;r.queue.push(c);
+    const c=s.spawn(0,r.x-700,12);s.cars.pop();
+    const tail=r.queue.at(-1);c.rampDistance=Math.max(700,tail?tail.rampDistance+tail.length+10:700);c.slipRamp=r.id;c.v=12;r.queue.push(c);
     r.nextArrival=s.elapsed+(22+s.random()*10)/this.phase.multiplier;
    }
-   for(const c of r.queue)c.rampApproach=Math.min(1,c.rampApproach+dt*.45);
-   const busy=s.cars.filter(c=>c.lane===0&&Math.abs(c.x-r.x)<220);
-   const interval=r.mode==='green'?2:r.mode==='auto'&&(busy.length>5||busy.some(c=>c.v<8))?14:7;
-   const gap=this.rampGap(r);
-   r.green=r.mode!=='red'&&!!gap&&s.elapsed-r.lastRelease>=interval;
-   if(r.green&&r.queue.length&&r.queue[0].rampApproach>=1){
-    const c=r.queue.shift();c.x=r.x;c.v=gap.v;c.onRamp=r.id;c.rampProgress=0;c.cooldown=8;c.decision=2;s.cars.push(c);
+   const gap=this.rampGap(r);r.releasing=r.mode==='open'&&!!gap;
+   for(let i=0;i<r.queue.length;i++){
+    const c=r.queue[i],leader=r.queue[i-1];
+    const available=leader?Math.max(0,c.rampDistance-leader.rampDistance-leader.length-5):Math.max(0,c.rampDistance-120);
+    const target=Math.min(22,c.desired,leader?Math.sqrt(2*1.5*available):r.releasing?gap.v:Math.sqrt(2*1.5*available));
+    const next=Math.max(0,c.v+Math.max(-2.5,Math.min(c.acceleration,(target-c.v)*.8))*dt);
+    const move=Math.min(available,Math.max(0,(c.v+next)*.5*dt));
+    c.rampDistance-=move;c.x=r.x-c.rampDistance;c.v=r.releasing&&!leader?next:move<Math.max(0,(c.v+next)*.5*dt)?move/dt:next;
+   }
+   if(r.releasing&&r.queue.length&&r.queue[0].rampDistance<=120.001){
+    const c=r.queue.shift();c.x=r.x-c.rampDistance;c.v=Math.min(c.v,gap.v);c.onRamp=r.id;c.rampProgress=0;c.cooldown=8;c.decision=2;s.cars.push(c);
     r.lastRelease=s.elapsed;r.joined++;
    }
   }
@@ -63,10 +68,10 @@ export class NetworkSystems {
   if(w.status==='scheduled'){w.status='announced';this.announce(`Roadworks due at ${(w.x/1000).toFixed(1)} km · prepare lane ${w.lanes[0]+1} closure at G0${this.protectionGantry()+1}.`);}
   if(s.elapsed<w.startsAt)return;
   const protectedLanes=w.lanes.every(l=>s.signals[this.protectionGantry()][l].mode==='closed');
-  const occupied=s.cars.some(c=>s.occupiedLanes(c).some(l=>w.lanes.includes(l))&&c.x>w.x-w.length-5&&c.x-c.length<w.x+5)||s.incidentBodies().some(i=>i.id!==w.sceneId&&w.lanes.includes(i.lane)&&i.x>w.x-w.length-5&&i.x-i.length<w.x+5);
+  const occupied=s.cars.some(c=>s.occupiedLanes(c).some(l=>w.lanes.includes(l))&&c.x>w.x-w.length-255&&c.x-c.length<w.x+5)||s.incidentBodies().some(i=>i.id!==w.sceneId&&w.lanes.includes(i.lane)&&i.x>w.x-w.length-255&&i.x-i.length<w.x+5);
   if(!w.sceneId&&w.sceneId!==0){
    if(!protectedLanes||occupied){w.status='awaiting-protection';return;}
-   const scene={id:s.incidentId++,type:'roadworks',lane:w.lanes[0],lanes:[...w.lanes],x:w.x,length:w.length,bodies:w.lanes.map(lane=>({lane,x:w.x,length:w.length})),status:'crews-working',clearsAt:Infinity};
+   const scene={id:s.incidentId++,type:'roadworks',lane:w.lanes[0],lanes:[...w.lanes],x:w.x,length:w.length+250,bodies:w.lanes.map(lane=>({lane,x:w.x,length:w.length+250})),status:'crews-working',clearsAt:Infinity};
    s.incidents.push(scene);w.sceneId=scene.id;
   }
   w.status=protectedLanes?'working':'safety-paused';

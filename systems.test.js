@@ -9,22 +9,22 @@ function setup(){
  return s;
 }
 function run(s,seconds){for(let i=0;i<seconds*10;i++)s.step(.1);}
-function queuedCar(s,r){const c=s.spawn(0,r.x,0);s.cars.pop();c.rampApproach=1;r.queue.push(c);return c;}
-test('red ramp holds actual vehicles; green releases them through a safe gap',()=>{
+function queuedCar(s,r){const d=r.queue.length?r.queue.at(-1).rampDistance+r.queue.at(-1).length+8:120;const c=s.spawn(0,r.x-d,0);s.cars.pop();c.rampDistance=d;c.slipRamp=r.id;r.queue.push(c);return c;}
+test('closed slip road holds vehicles; open releases through a safe gap',()=>{
  const s=setup(),r=s.systems.ramps[0];const c=queuedCar(s,r);
- s.systems.setRampMode(0,'red');run(s,10);assert(r.queue.includes(c));assert(!s.cars.includes(c));
- s.systems.setRampMode(0,'green');run(s,.1);assert(s.cars.includes(c));assert.equal(c.onRamp,0);assert.equal(r.joined,1);
- run(s,4);assert.equal(c.onRamp,null);assert(c.x>r.x);
+ s.systems.setRampMode(0,'closed');run(s,10);assert(r.queue.includes(c));assert(!s.cars.includes(c));
+ s.systems.setRampMode(0,'open');run(s,.1);assert(s.cars.includes(c));assert.equal(c.onRamp,0);assert.equal(r.joined,1);
+ run(s,30);assert.equal(c.onRamp,null);assert(c.x>r.x);
 });
-test('green ramp cannot insert a vehicle into occupied traffic or a closing lane',()=>{
- const s=setup(),r=s.systems.ramps[0];const c=queuedCar(s,r);r.mode='green';
- s.spawn(0,r.x,0);run(s,.1);assert(r.queue.includes(c));
- s.cars=[];s.signals[1][0].mode='closed';run(s,.1);assert(r.queue.includes(c));
+test('open slip road cannot insert a vehicle into occupied traffic or a closing lane',()=>{
+ const s=setup(),r=s.systems.ramps[0];const c=queuedCar(s,r);r.mode='open';
+ s.spawn(0,r.x-120,0);run(s,.1);assert(r.queue.includes(c));
+ s.cars=[];s.signals[0][0].mode='closed';run(s,.1);assert(r.queue.includes(c));
 });
-test('automatic ramp metering spaces releases without deleting queue vehicles',()=>{
- const s=setup(),r=s.systems.ramps[0];r.mode='auto';const first=queuedCar(s,r),second=queuedCar(s,r);
+test('slip-road drivers wait for a safe gap without deleting queue vehicles',()=>{
+ const s=setup(),r=s.systems.ramps[0];r.mode='open';const first=queuedCar(s,r),second=queuedCar(s,r);
  run(s,.1);assert(s.cars.includes(first));assert(r.queue.includes(second));run(s,3);assert(r.queue.includes(second));
- run(s,15);assert(s.cars.includes(second));assert.equal(r.joined,2);
+ run(s,35);assert(s.cars.includes(second));assert.equal(r.joined,2);
 });
 test('roadworks wait for protected empty lanes, pause if protection is removed, then finish once',()=>{
  const s=setup(),o=s.systems,w=o.work;w.announceAt=0;w.startsAt=0;w.remaining=4;
@@ -83,4 +83,11 @@ test('later two-lane work plans send both upstream arrows toward the remaining o
  const s=setup(),o=s.systems;o.work={...o.work,x:7200,lanes:[1,2]};o.protectWorks();
  const g=o.protectionGantry();assert.equal(s.signals[g][1].mode,'closed');assert.equal(s.signals[g][2].mode,'closed');
  assert.equal(s.signals[g-1][1].mode,'merge-left');assert.equal(s.signals[g-1][2].mode,'merge-left');
+});
+
+test('slip roads default open and approach vehicles move continuously at physical speed',()=>{
+ const s=setup(),r=s.systems.ramps[0];assert.equal(r.mode,'open');assert.equal(s.systems.setRampMode(0,'auto'),false);
+ r.nextArrival=0;run(s,.1);const c=r.queue[0];assert(c);r.nextArrival=Infinity;let before=c.x;
+ for(let i=0;i<700;i++){s.step(.1);assert(c.x>=before);assert(c.x-before<4);before=c.x;if(c.onRamp!=null)assert(c.rampProgress>=0&&c.rampProgress<=1);}
+ assert(s.cars.includes(c));assert.equal(c.onRamp,null);assert.equal(r.queue.length,0);
 });

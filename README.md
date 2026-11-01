@@ -34,7 +34,7 @@ Courtesy yielding is assigned only to the nearest suitable rear neighbour of a w
 
 ## Network operations and optional shift goals
 
-Three real slip roads join at J1 (1.2 km), J2 (5.9 km) and J3 (9.0 km). Tap a junction on the map for Auto/Green/Red ramp metering, or open **Network operations** beneath the traffic desk. Waiting vehicles are animated on the slip roads and join through checked front and rear gaps. Even Green cannot release into a vehicle or a closed approach. Auto adapts release spacing to mainline congestion.
+Three slip roads join at J1 (1.2 km), J2 (5.9 km) and J3 (9.0 km). Each defaults to Open, with only an emergency Closed setting. Vehicles follow a physical 700 m approach and gradual 120 m join into lane 1, yielding to mainline traffic. The same vehicle symbols are used throughout; no timed traffic-light metering. Roadwork cones form a 250 m diagonal taper across the closed lanes, followed by the work-area boundary. The whole taper is checked clear before deployment.
 
 Demand automatically cycles through normal traffic, morning rush, easing traffic and stadium departures. Both upstream arrivals and junction demand change; the current phase is visible above the map.
 
@@ -44,4 +44,4 @@ A scheduled police rolling hold uses three moving police vehicles at about 20 mp
 
 **Optional shift goals** track serving 100 vehicles, getting an ambulance through, clearing a queue of at least five stopped vehicles, and completing protected roadworks. Goals never fail or stop the simulation; completed badges remain earned. There is no game-over state.
 
-The controls remain usable without opening the collapsible panels: tap signs for lane control and J1–J3 for ramp signals. The model's systemsEnabled switch isolates scheduled operations in focused traffic tests; dedicated systems tests cover combined operation safety.
+The controls remain usable without opening the collapsible panels: tap signs for lane control and J1–J3 for slip-road closures. The model's systemsEnabled switch isolates scheduled operations in focused traffic tests; dedicated systems tests cover combined operation safety.

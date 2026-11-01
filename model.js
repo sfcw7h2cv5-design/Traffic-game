@@ -347,7 +347,7 @@ export class Simulation {
     }
     const movementSnapshot=this.cars.map(c=>({...c}));
     for(const c of this.cars){
-      if(c.onRamp!=null){c.rampProgress=Math.min(1,c.rampProgress+dt/3);if(c.rampProgress>=1)c.onRamp=null;}
+      if(c.onRamp!=null){const join=this.systems.ramps[c.onRamp].x;c.rampProgress=Math.max(0,Math.min(1,(c.x-(join-120))/120));if(c.x>=join){c.onRamp=null;c.slipRamp=null;}}
       if(c.recovering!=null){c.v=0;continue;}
       if(c.lane<0){
         const front=this.obstacle(c,c.lane,movementSnapshot);

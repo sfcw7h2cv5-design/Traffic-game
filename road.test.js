@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createRoadGeometry} from './road.js';
+import {createRoadGeometry,slipRoadPoint,roadworkCones} from './road.js';
 import {layoutSprites} from './display.js';
 import {LENGTH,GANTRIES} from './model.js';
 test('narrow curved carriageway and every sign target stay inside mobile and desktop maps',()=>{
@@ -22,4 +22,20 @@ test('vehicles and lane-sign tap targets share the same curved coordinates',()=>
 });
 test('detail camera keeps the selected gantry visible while using the same road curve',()=>{
  for(const x of GANTRIES){const g=createRoadGeometry(390,1055,LENGTH,400,x-200);assert(g.project(x)>100&&g.project(x)<950);assert(Math.abs(g.laneX(x,1)-g.center(x))<1e-7);}
+});
+
+test('slip-road path stays left of lane 1 and joins continuously',()=>{
+ const g=createRoadGeometry(390,1000,10000),r={x:5900};
+ for(let d=750;d>=0;d--){const p=slipRoadPoint(g,r,r.x-d);assert(p.x<=g.laneX(r.x-d,0));assert.equal(p.y,g.project(r.x-d));}
+ assert.equal(slipRoadPoint(g,r,r.x).x,g.laneX(r.x,0));
+ const a=slipRoadPoint(g,r,r.x-120-.001),b=slipRoadPoint(g,r,r.x-120+.001);assert(Math.hypot(a.x-b.x,a.y-b.y)<.01);
+});
+test('roadwork cones taper across closed lanes with space between every cone',()=>{
+ for(const lanes of [[0],[1,2]])for(const length of [10000,400]){
+  const g=createRoadGeometry(390,1000,10000,length,3900),w={x:4200,length:150,lanes},cones=roadworkCones(g,w);
+  assert(cones.some(p=>p.role==='taper'));assert(cones.some(p=>p.role==='end'));
+  assert(Math.max(...cones.map(p=>p.x))-Math.min(...cones.map(p=>p.x))>=g.laneWidth*.9);
+  for(let i=0;i<cones.length;i++)for(let j=i+1;j<cones.length;j++)assert(Math.hypot(cones[i].x-cones[j].x,cones[i].y-cones[j].y)>=6);
+  assert(cones.some(p=>Math.abs(p.y-g.project(3800))<.001));
+ }
 });

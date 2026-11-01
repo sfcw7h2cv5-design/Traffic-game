@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=18';
-import {createSpriteLayout} from './display.js?v=18';
-import {createRoadGeometry} from './road.js?v=18';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=19';
+import {createSpriteLayout} from './display.js?v=19';
+import {createRoadGeometry,slipRoadPoint,roadworkCones} from './road.js?v=19';
 const placeSprites=createSpriteLayout();
 const $=s=>document.querySelector(s),sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
@@ -72,20 +72,20 @@ function positionJunctions(){
  const geo=roadGeometry();document.querySelectorAll('[data-ramp]').forEach(b=>{const r=operations.ramps[+b.dataset.ramp],y=geo.project(r.x);b.hidden=y<20||y>geo.height-30;b.style.left=Math.max(3,geo.leftAt(r.x)-73)+'px';b.style.top=y+'px'});
  if(activeRamp!=null){const r=operations.ramps[activeRamp];$('#rampControls').style.top=Math.max(8,Math.min(geo.height-190,geo.project(r.x)+28))+'px';}
 }
-$('#rampTargets').innerHTML=operations.ramps.map(r=>'<button class="ramp-target" data-ramp="'+r.id+'" aria-label="'+r.name+' ramp signals">'+r.name+'<span id="rampLight'+r.id+'">●</span></button>').join('');
+$('#rampTargets').innerHTML=operations.ramps.map(r=>'<button class="ramp-target" data-ramp="'+r.id+'" aria-label="'+r.name+' slip-road closure">'+r.name+'<span id="rampState'+r.id+'"></span></button>').join('');
 $('#rampTargets').onclick=e=>{const b=e.target.closest('[data-ramp]');if(!b)return;if(detailArmed){openDetail(operations.ramps[+b.dataset.ramp].x);return;}closeEditor();activeRamp=+b.dataset.ramp;$('#rampControls').hidden=false;updateRampEditor();positionJunctions()};
 $('#rampControls').addEventListener('click',e=>e.stopPropagation());
 $('#closeRamp').onclick=closeRamp;
 $('#rampControls').onclick=e=>{const b=e.target.closest('[data-ramp-choice]');if(b&&activeRamp!=null){operations.setRampMode(activeRamp,b.dataset.rampChoice);updateRampEditor();updateOperations()}};
-function updateRampEditor(){if(activeRamp==null)return;const r=operations.ramps[activeRamp];$('#rampTitle').textContent=r.name+' · ramp signals';$('#rampReading').textContent=r.queue.length+' vehicles waiting · '+r.joined+' joined';document.querySelectorAll('[data-ramp-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.rampChoice===r.mode)))}
-$('#rampsList').innerHTML=operations.ramps.map(r=>'<div class="ramp-row"><div><b>'+r.name+' · '+(r.x/1000).toFixed(1)+' km</b><small id="rampQueue'+r.id+'">0 waiting</small></div><select data-ramp-mode="'+r.id+'" aria-label="'+r.name+' ramp signal"><option value="auto">Auto</option><option value="green">Green</option><option value="red">Red</option></select></div>').join('');
+function updateRampEditor(){if(activeRamp==null)return;const r=operations.ramps[activeRamp];$('#rampTitle').textContent=r.name+' · slip-road closure';$('#rampReading').textContent=r.queue.length+' vehicles waiting · '+r.joined+' joined';document.querySelectorAll('[data-ramp-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.rampChoice===r.mode)))}
+$('#rampsList').innerHTML=operations.ramps.map(r=>'<div class="ramp-row"><div><b>'+r.name+' · '+(r.x/1000).toFixed(1)+' km</b><small id="rampQueue'+r.id+'">0 waiting</small></div><select data-ramp-mode="'+r.id+'" aria-label="'+r.name+' slip-road state"><option value="open">Open</option><option value="closed">Closed</option></select></div>').join('');
 $('#rampsList').onchange=e=>{if(e.target.dataset.rampMode!=null){operations.setRampMode(+e.target.dataset.rampMode,e.target.value);updateRampEditor()}};
 $('#protectWorks').onclick=()=>{operations.protectWorks();updateOperations()};
 $('#objectiveList').innerHTML=operations.objectives.map(o=>'<div class="objective"><label for="goal-'+o.id+'">'+o.title+'</label><progress id="goal-'+o.id+'" max="'+o.target+'" value="0"></progress><small id="goalReading-'+o.id+'">0 / '+o.target+'</small></div>').join('');
 function updateOperations(){
  const phase=operations.phase,w=operations.work,b=operations.roadblock;
  $('#networkNotice').textContent=phase.name+' · '+(w.status==='safety-paused'?'Roadwork protection missing':b.status==='rolling'||b.status==='clearing'?'Police hold active':w.status==='working'?'Road crews working':w.status==='awaiting-protection'?'Roadworks waiting for your protection':'3 junctions online');
- for(const r of operations.ramps){$('#rampQueue'+r.id).textContent=r.queue.length+' waiting · '+r.joined+' joined';$('#rampLight'+r.id).style.color=r.mode==='red'||!r.green?'#f69b7b':'#c5ed7c';const select=document.querySelector('[data-ramp-mode="'+r.id+'"]');if(select.value!==r.mode)select.value=r.mode;}
+ for(const r of operations.ramps){$('#rampQueue'+r.id).textContent=r.queue.length+' waiting · '+r.joined+' joined';$('#rampState'+r.id).textContent=r.mode==='closed'?' ×':'';const select=document.querySelector('[data-ramp-mode="'+r.id+'"]');if(select.value!==r.mode)select.value=r.mode;}
  $('#networkNotice').classList.toggle('urgent',w.status==='awaiting-protection'||w.status==='safety-paused');
  const g=operations.protectionGantry();
  $('#workReading').textContent=w.status==='complete'?'Work complete. Reopen the protected lanes when ready.':w.status==='working'?'Crews working at '+(w.x/1000).toFixed(1)+' km · '+Math.ceil(w.remaining/3)+'s at 1× remaining.':w.status==='safety-paused'?'Workers withdrawn: restore the closure at G0'+(g+1)+' to resume.':'Work planned at '+(w.x/1000).toFixed(1)+' km. Close lane'+(w.lanes.length>1?'s ':' ')+w.lanes.map(l=>l+1).join(' & ')+' at G0'+(g+1)+' before crews enter.';
@@ -121,16 +121,23 @@ function draw(){
  ctx.save();ctx.translate(w-15,h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#79968c';ctx.font='9px sans-serif';ctx.fillText('NORTHBOUND  →',-45,0);ctx.restore();
 // Keep every vehicle symbol fixed in size; no numbered queue overlays.
 for(const r of operations.ramps){
- const rx=geo.laneX(r.x,0),ry=y(r.x);if(ry<-100||ry>h+100)continue;
- ctx.beginPath();ctx.moveTo(-20,ry+90);ctx.bezierCurveTo(rx-80,ry+65,rx-30,ry+25,rx,ry);ctx.strokeStyle='#789187';ctx.lineWidth=12;ctx.stroke();ctx.strokeStyle='#30494a';ctx.lineWidth=9;ctx.stroke();
- r.queue.forEach((c,i)=>{const t=c.rampApproach??1,targetX=rx-50-i*5,targetY=ry+24+i*7;ctx.fillStyle=c.truck?'#e7dfb5':'#bdd4c3';ctx.fillRect(-20+(targetX+20)*t,ry+90+(targetY-ry-90)*t,4,c.truck?5:3)});
+ ctx.beginPath();
+ for(let d=750;d>=0;d-=5){const p=slipRoadPoint(geo,r,r.x-d);if(d===750)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);}
+ ctx.strokeStyle='#789187';ctx.lineWidth=12;ctx.stroke();ctx.strokeStyle='#30494a';ctx.lineWidth=9;ctx.stroke();
+ if(r.mode==='closed'){const p=slipRoadPoint(geo,r,r.x-110);ctx.fillStyle='#16242b';ctx.fillRect(p.x-7,p.y-6,14,12);ctx.fillStyle='#ff7768';ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.fillText('×',p.x,p.y+5);}
 }
 const work=operations.work;
 if(work.status!=='complete'&&sim.elapsed>=work.announceAt){const wy=y(work.x),wx=geo.leftAt(work.x);ctx.fillStyle='#e1bd73';ctx.font='8px sans-serif';ctx.textAlign='left';ctx.fillText('ROADWORKS '+(work.status==='working'?'ACTIVE':'DUE'),wx+geo.roadWidth+10,wy-13);}
+if(work.sceneId!=null&&work.status!=='complete'){
+ for(const p of roadworkCones(geo,work)){if(p.y<-5||p.y>h+5)continue;ctx.fillStyle='#ff9d43';ctx.beginPath();ctx.moveTo(p.x,p.y-3);ctx.lineTo(p.x-3,p.y+3);ctx.lineTo(p.x+3,p.y+3);ctx.closePath();ctx.fill();ctx.fillStyle='#fff2d3';ctx.fillRect(p.x-1.5,p.y,3,1);}
+ if(work.status==='working'){ctx.fillStyle='#e6ef88';ctx.fillRect(geo.laneX(work.x-work.length/2,work.lanes[0])-2,y(work.x-work.length/2),4,5);}
+}
 const incidentLabels=[],incidentMarkers=[];
-for(const c of placeSprites(sim.cars,sim.incidents,{left:geo.leftAt(0),laneWidth:lw,project:y,overview:VIEW_LENGTH===LENGTH,laneX:geo.laneX,angleAt:geo.angleAt})){
+const vehicles=[...sim.cars,...operations.ramps.flatMap(r=>r.queue)];
+for(const c of placeSprites(vehicles,sim.incidents,{left:geo.leftAt(0),laneWidth:lw,project:y,overview:VIEW_LENGTH===LENGTH,laneX:geo.laneX,angleAt:geo.angleAt,rampPosition:c=>slipRoadPoint(geo,operations.ramps[c.onRamp??c.slipRamp],c.x)})){
  const {cx,cy,width}=c;const height=c.designHeight;
  if(cy+c.height<0||cy>h)continue;
+ if(c.type==='roadworks'){if(!c.bodyIndex)incidentLabels.push(c);continue;}
  ctx.save();ctx.translate(cx,cy);ctx.rotate(c.angle);ctx.scale(1,c.height/height);ctx.translate(-cx,-cy);
  ctx.fillStyle=c.static?'#ef9476':c.kind==='police'||c.kind==='roadblock'?'#f2f2dd':c.kind==='ambulance'?'#edee75':c.kind==='recovery'?'#f5b85a':c.truck?'#e7dfb5':c.braking?'#e7b66f':['#c6ddd1','#7ba9ad','#a9c998','#d9e2d5'][c.id%4];
  ctx.beginPath();ctx.roundRect(cx-width/2,cy,width,height,1);ctx.fill();ctx.fillStyle='#385a63';ctx.fillRect(cx-width/2+.6,cy+1,width-1.2,2);
@@ -141,7 +148,7 @@ for(const c of placeSprites(sim.cars,sim.incidents,{left:geo.leftAt(0),laneWidth
  }
  if((c.emergency||c.blocker)&&c.height<3){ctx.fillStyle=Math.floor(sim.elapsed*7)%2?'#45c5ff':'#f2fcff';ctx.fillRect(cx-width/2,cy,width,height);}
  ctx.restore();
- if(c.static){if(c.type==='roadworks'){ctx.fillStyle='#ffb76a';for(let k=0;k<5;k++){const py=cy+k*c.height/5;ctx.beginPath();ctx.moveTo(cx-9,py);ctx.lineTo(cx-12,py+4);ctx.lineTo(cx-6,py+4);ctx.closePath();ctx.fill();}if(c.status!=='workers-withdrawn'){ctx.fillStyle='#e6ef88';ctx.fillRect(cx+6,cy+c.height/2,3,4);}}incidentMarkers.push(c);if(c.type==='shed-load'){ctx.fillStyle='#e7ad60';ctx.fillRect(cx-4,cy-2,3,3);ctx.fillRect(cx+1,cy+2,3,3);}if(!c.bodyIndex)incidentLabels.push(c);}
+ if(c.static){incidentMarkers.push(c);if(c.type==='shed-load'){ctx.fillStyle='#e7ad60';ctx.fillRect(cx-4,cy-2,3,3);ctx.fillRect(cx+1,cy+2,3,3);}if(!c.bodyIndex)incidentLabels.push(c);}
 }
 GANTRIES.forEach((g,gi)=>{const gy=y(g),left=geo.leftAt(g);if(gy<20||gy>h-20)return;ctx.fillStyle=gi===selected?'#bbdf86':'#6e8880';ctx.fillRect(left-12,gy,roadW+24,3);ctx.fillRect(left-12,gy,3,16);ctx.fillRect(left+roadW+9,gy,3,16);ctx.textAlign='left';ctx.font='bold 9px sans-serif';sim.signals[gi].forEach((s,l)=>{const x=left+(l+.5)*lw;ctx.fillStyle='#101e24';ctx.fillRect(x-14,gy-14,28,25);ctx.textAlign='center';ctx.font='bold 13px sans-serif';ctx.fillStyle=s.mode==='closed'?'#ff7768':s.mode==='merge'?'#efc676':'#e4ecdf';if(s.mode.startsWith('merge')){const dir=s.mode==='merge-left'||(s.mode==='merge'&&l===2)?-1:1;ctx.strokeStyle='#f1cc72';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x-dir*4,gy+5);ctx.lineTo(x+dir*5,gy-5);ctx.stroke();ctx.beginPath();ctx.moveTo(x+dir*5-dir*6,gy-5);ctx.lineTo(x+dir*5,gy-5);ctx.lineTo(x+dir*5,gy+1);ctx.stroke();}else ctx.fillText(s.mode==='closed'?'×':s.speed,x,gy+3);if(s.mode==='open'){ctx.strokeStyle='#e57869';ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(x,gy-2,10,0,Math.PI*2);ctx.stroke()}})});for(const c of incidentLabels){
  let labelY=c.cy;
