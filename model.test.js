@@ -78,7 +78,7 @@ test('breakdowns wait for a real recovery truck, then load and tow away', () => 
  const tow=s.cars.find(c=>c.kind==='recovery');assert(tow&&tow.lane===-1);
  run(s,2);assert(s.incidents.includes(i));assert.equal(i.status,'recovery-en-route');
  for(let n=0;n<1000&&i.status!=='recovering';n++)s.step(.1);
- assert.equal(i.status,'recovering');assert(i.clearsAt>s.elapsed+130);
+ assert.equal(i.status,'recovering');assert(i.clearsAt>=s.elapsed+18&&i.clearsAt<=s.elapsed+30);
  for(let n=0;n<3000&&s.incidents.length;n++)s.step(.1);
  assert.equal(s.incidents.length,0);assert(tow.towing);assert.equal(tow.recoveryTarget,null);
  assert.equal(s.signals[1][0].mode,'closed');
@@ -108,7 +108,9 @@ test('dense traffic never overlaps, including lane-change reservations and incid
   s.addIncident(0,2400,'breakdown');
   for(let n=0;n<3000;n++){
    if(n===900)s.signals[2][1].mode='closed';
+   const before=new Map(s.cars.map(c=>[c.id,c.x]));
    s.step(.1);
+   for(const c of s.cars)if(before.has(c.id))assert(c.x>=before.get(c.id)-1e-7,`vehicle moved backwards: ${c.id} at ${s.elapsed}`);
    const bodies=[...s.cars,...s.incidents.map(i=>({...i,visualLane:i.lane,fromLane:i.lane}))];
    for(let a=0;a<bodies.length;a++)for(let b=a+1;b<bodies.length;b++){
     const x=bodies[a],y=bodies[b];
@@ -117,5 +119,23 @@ test('dense traffic never overlaps, including lane-change reservations and incid
     assert(front.x-front.length-back.x>=1.99,`overlap seed ${seed} time ${s.elapsed}: ${front.id}/${back.id}`);
    }
   }
+ }
+});
+
+test('automatic recovery dispatches promptly and completes short loading without operator input',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const i=s.addIncident(0,2200,'breakdown');
+ run(s,11);assert.equal(i.status,'recovery-en-route');assert(s.cars.some(c=>c.kind==='recovery'));
+ for(let n=0;n<1000&&i.status!=='recovering';n++)s.step(.1);
+ assert.equal(i.status,'recovering');const loadingStarts=s.elapsed;
+ for(let n=0;n<310&&s.incidents.length;n++)s.step(.1);
+ assert.equal(s.incidents.length,0);assert(s.elapsed-loadingStarts<31);
+});
+test('police and ambulance both exceed 70 mph on clear roads, including under lower signs',()=>{
+ for(const kind of ['police','ambulance']){
+  const s=new Simulation(seeded());quiet(s);s.cars=[];
+  for(const row of s.signals)for(const signal of row)signal.speed=40;
+  const vehicle=s.spawn(2,500,30,kind);run(s,25);
+  assert(vehicle.v/.44704>80,`${kind}: ${vehicle.v/.44704} mph`);
  }
 });

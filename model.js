@@ -33,7 +33,7 @@ export class Simulation {
       cooldown: this.random() * 4, decision: this.random(),
       restart: 0, a: 0, braking: false,
     };
-    if(car.emergency){car.desired=kind==='police'?39:36;car.acceleration=1.9;car.headway=1.4;}
+    if(car.emergency){car.desired=(kind==='police'?95:90)*.44704;car.acceleration=1.9;car.headway=1.4;}
     if(kind==='recovery'){car.desired=24;car.acceleration=.8;}
     car.v = Math.min(v, car.desired);
     this.cars.push(car);
@@ -69,7 +69,7 @@ export class Simulation {
     for (const i of this.incidents) if (i.lane === lane && i.x >= car.x && i.x - i.length < pos) {
       pos = i.x - i.length; speed = 0;
     }
-    for (let g = 0; g < GANTRIES.length; g++) if (this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
+    for (let g = 0; g < GANTRIES.length; g++) if (lane>=0 && this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
       pos = Math.max(car.x, GANTRIES[g] - 8); speed = 0;
     }
     return { gap: Math.max(.1, pos - car.x), speed };
@@ -81,10 +81,10 @@ export class Simulation {
     const vehicle = this.cars.filter(c => c.lane === lane && c.x > 900 && c.x < LENGTH - 600 && c.v > 10 && !c.kind && !this.incidents.some(i=>i.lane===lane&&Math.abs(i.x-c.x)<80))
       .sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
     if(!vehicle&&this.cars.some(c=>c.lane===lane&&Math.abs(c.x-x)<40))return null;
-    const incident = { id: this.incidentId++, lane, x: vehicle?.x ?? x, type, truck: vehicle?.truck ?? false,
+    const incident = { id: this.incidentId++, vehicleId: vehicle?.id, lane, x: vehicle?.x ?? x, type, truck: vehicle?.truck ?? false,
       length: vehicle?.length ?? 4.7, started: this.elapsed,
-      status: type==='breakdown'?'awaiting-recovery':'crews-working', dispatchAt: this.elapsed+45+this.random()*30,
-      workDuration: 140+this.random()*80,
+      status: type==='breakdown'?'awaiting-recovery':'crews-working', dispatchAt: this.elapsed+5+this.random()*5,
+      workDuration: 18+this.random()*12,
       clearsAt: type==='breakdown'?Infinity:this.elapsed+({debris:240,collision:420}[type]??300)+this.random()*120 };
     if (vehicle) this.cars = this.cars.filter(c => c.id !== vehicle.id);
     this.incidents.push(incident);
@@ -125,6 +125,7 @@ export class Simulation {
     if(!incident||incident.type!=='breakdown'||incident.status!=='awaiting-recovery')return false;
     // Recovery joins via the left hard shoulder, which is separate from traffic.
     const tow=this.spawn(-1,Math.max(0,incident.x-1000),20,'recovery');
+    tow.length+=incident.length;
     tow.recoveryTarget=incident.id;incident.status='recovery-en-route';
     this.lastEvent=`Recovery truck dispatched · Lane 1 · ${(incident.x/1000).toFixed(2)} km.`;this.eventId++;
     return true;
@@ -155,7 +156,7 @@ export class Simulation {
       this.eventId++;
       for(const incident of cleared) {
         const tow=this.cars.find(c=>c.recovering===incident.id);
-        if(tow){tow.recovering=null;tow.recoveryTarget=null;tow.towing=true;tow.cooldown=0;tow.length+=incident.length;}
+        if(tow){tow.recovering=null;tow.recoveryTarget=null;tow.towing=true;tow.cooldown=0;}
       }
     }
     if (this.elapsed >= this.nextIncident) {
@@ -185,10 +186,7 @@ export class Simulation {
     // makes followers react instantly and produces artificial synchronised motion.
     const snapshot = this.cars.map(c => ({ ...c }));
     for (const c of this.cars) {
-      if(c.recovering!=null){c.v=0;continue;}
-      if(c.lane<0){
-        c.v=Math.min(c.desired,c.v+c.acceleration*dt);c.x+=c.v*dt;continue;
-      }
+      if(c.recovering!=null||c.lane<0)continue;
       c.cooldown -= dt; c.decision -= dt;
       const sig = this.signalAt(c.x, c.lane);
       let front = this.obstacle(c, c.lane, snapshot);
@@ -196,7 +194,7 @@ export class Simulation {
       const warning = upcoming >= 0 ? this.signals[upcoming][c.lane] : sig;
       const approachingSiren=!c.emergency&&snapshot.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<240);
       const forced = sig.mode !== 'open' || upcoming >= 0 || (front.gap < 160 && front.speed < 3);
-      if (c.decision <= 0 && c.cooldown <= 0 && Math.abs(c.visualLane - c.lane) < .08) {
+      if (c.decision <= 0 && c.cooldown <= 0 && Math.abs(c.visualLane - c.lane) <= .02) {
         c.decision = .7 + this.random() * .8;
         let target = c.lane;
         const safe = lane => {
@@ -207,7 +205,11 @@ export class Simulation {
             .sort((a, b) => b.x - a.x)[0];
           const rearGap = behind ? c.x - c.length - behind.x : 1000;
           const rearNeeded = behind ? 5 + behind.v * 1.5 + Math.max(0, behind.v - c.v) * 3 : 0;
-          return ahead.gap > 6 + c.v * (forced ? 1.1 : 1.8) && rearGap > rearNeeded;
+          const horizon=4;
+          const futureFront=ahead.gap+Math.min(0,ahead.speed-c.v)*horizon;
+          const futureRear=rearGap+Math.min(0,c.v-(behind?.v??c.v))*horizon;
+          const overlapping=this.cars.some(o=>o.id!==c.id&&this.occupiedLanes(o).includes(lane)&&o.x>=c.x-c.length-3&&o.x-o.length<=c.x+3)||this.incidents.some(i=>i.lane===lane&&i.x>=c.x-c.length-4&&i.x-i.length<=c.x+4);
+          return !overlapping&&futureFront>6+c.v*(forced?1.1:1.8)&&futureRear>rearNeeded;
         };
         if(approachingSiren&&c.lane>0&&safe(c.lane-1)){target=c.lane-1;}
         else if(c.kind==='recovery'&&c.recoveryTarget!=null&&c.lane>0&&safe(c.lane-1)){target=c.lane-1;}
@@ -221,7 +223,7 @@ export class Simulation {
             const gap = this.obstacle(c, left, snapshot);
             if (gap.gap > Math.max(65, c.v * 3.5) || gap.speed >= Math.min(c.desired, sig.speed * .44704) - 1) target = left;
           }
-          const catching = front.gap < Math.max(75, c.v * 3.8) && front.speed < Math.min(c.desired, sig.speed * .44704) - 2;
+          const catching = front.gap < Math.max(75, c.v * 3.8) && front.speed < Math.min(c.desired, this.speedTarget(c)) - 2;
           if (target === c.lane && catching && safe(c.lane + 1)) {
             const right = this.obstacle(c, c.lane + 1, snapshot);
             if (right.gap > front.gap + 20 || right.speed > front.speed + 2) target = c.lane + 1;
@@ -229,9 +231,21 @@ export class Simulation {
         }
         if (target !== c.lane) { c.fromLane = c.lane; c.lane = target; c.cooldown = 5 + this.random() * 4; }
       }
-      front = this.obstacle(c, c.lane, snapshot);
-      if (Math.abs(c.visualLane - c.lane) > .08) {
-        const oldFront = this.obstacle(c, c.fromLane, snapshot);
+    }
+    const movementSnapshot=this.cars.map(c=>({...c}));
+    for(const c of this.cars){
+      if(c.recovering!=null){c.v=0;continue;}
+      if(c.lane<0){
+        const front=this.obstacle(c,c.lane,movementSnapshot);
+        c.v=Math.min(c.desired,c.v+c.acceleration*dt);
+        const berth=this.incidents.find(i=>i.id===c.recoveryTarget);
+        const remaining=berth?Math.max(0,berth.x-25-c.x):Infinity;
+        c.x+=Math.min(remaining,Math.max(0,front.gap-2),c.v*dt);continue;
+      }
+      let front=this.obstacle(c,c.lane,movementSnapshot);
+
+      if (Math.abs(c.visualLane - c.lane) > .02) {
+        const oldFront = this.obstacle(c, c.fromLane, movementSnapshot);
         if (oldFront.gap < front.gap) front = oldFront;
       }
       const unruly = this.scenario === 'reckless' && c.reckless;
@@ -249,7 +263,7 @@ export class Simulation {
       c.a += (targetA - c.a) * Math.min(1, dt / (targetA < -2 ? .18 : c.reaction));
       const nextV = Math.max(0, c.v + c.a * dt);
       const requested = Math.max(0, (c.v + nextV) * .5 * dt);
-      const move = Math.min(Math.max(0, front.gap - .8), requested);
+      const move = Math.min(Math.max(0, front.gap - 2), requested);
       c.x += move; c.v = move < requested ? move / dt : nextV;
       c.braking = c.a < -.6;
       c.visualLane += (c.lane - c.visualLane) * Math.min(1, dt * .85);

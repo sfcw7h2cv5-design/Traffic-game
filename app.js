@@ -1,5 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=5';
-import {layoutSprites} from './display.js?v=5';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=6';
+import {createSpriteLayout} from './display.js?v=6';
+const placeSprites=createSpriteLayout();
 const $=s=>document.querySelector(s),sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
 const canvas=$('#road'),ctx=canvas.getContext('2d'),editor=$('#inlineSignals');
@@ -29,7 +30,6 @@ function updateInlineReading(){if(editor.hidden)return;const cars=sim.cars.filte
 $('#pause').onclick=()=>{paused=!paused;$('#pause').textContent=paused?'▶':'❚❚';$('#pause').setAttribute('aria-label',paused?'Resume simulation':'Pause simulation')};
 $('#rate').onclick=()=>{rate=rate===1?2:rate===2?4:1;$('#rate').textContent=rate+'×'};
 $('#scenario').onchange=e=>{sim.scenario=e.target.value;$('#scenarioText').textContent=descriptions[sim.scenario];if(sim.scenario==='incident')sim.nextIncident=Math.min(sim.nextIncident,sim.elapsed+10)};
-$('#recover').onclick=()=>{let dispatched=0;for(const i of sim.incidents)if(sim.dispatchRecovery(i))dispatched++;if(!dispatched)notify('No breakdowns awaiting dispatch. Recovery crews already assigned where needed.')};
 $('#help').onclick=()=>$('#guide').showModal();$('#closeHelp').onclick=$('#begin').onclick=()=>$('#guide').close();
 // iPhone permits audio only after a deliberate user gesture.
 let audio=null,osc=null,gain=null,sound=false;
@@ -40,7 +40,7 @@ function draw(){const w=canvas.clientWidth,h=canvas.clientHeight,dpr=devicePixel
 ctx.font='9px sans-serif';ctx.fillStyle='#7d9990';ctx.textAlign='left';for(let km=0;km<=LENGTH/1000;km++){ctx.fillText(`${km}.0 km`,15,y(km*1000));ctx.fillRect(left-25,y(km*1000),8,1)}ctx.save();ctx.translate(w-20,h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#79968c';ctx.font='9px sans-serif';ctx.fillText('NORTHBOUND  →',-55,0);ctx.restore();
 // Vehicle symbols are enlarged for readability. Stack their display bounds
 // upstream in dense queues so enlarged symbols never cover one another.
-for(const c of layoutSprites(sim.cars,sim.incidents,{left,laneWidth:lw,project:y})){
+for(const c of placeSprites(sim.cars,sim.incidents,{left,laneWidth:lw,project:y})){
  const {cx,cy,width,height}=c;
  ctx.fillStyle=c.static?'#ef9476':c.kind==='police'?'#f2f2dd':c.kind==='ambulance'?'#edee75':c.kind==='recovery'?'#f5b85a':c.truck?'#e7dfb5':c.braking?'#e7b66f':['#c6ddd1','#7ba9ad','#a9c998','#d9e2d5'][c.id%4];
  ctx.beginPath();ctx.roundRect(cx-width/2,cy,width,height,1);ctx.fill();ctx.fillStyle='#385a63';ctx.fillRect(cx-width/2+.6,cy+1,width-1.2,2);
