@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=16';
-import {createSpriteLayout} from './display.js?v=16';
-import {createRoadGeometry} from './road.js?v=16';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=17';
+import {createSpriteLayout} from './display.js?v=17';
+import {createRoadGeometry} from './road.js?v=17';
 const placeSprites=createSpriteLayout();
 const $=s=>document.querySelector(s),sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;

@@ -348,3 +348,26 @@ test('hard braking counts episodes and expires them after one simulated minute',
  run(s,2);assert(s.trafficAdvice().hardBrakes>0);assert(s.trafficAdvice().hardBrakes<=2);
  run(s,90);assert.equal(s.trafficAdvice().hardBrakes,0);
 });
+
+test('traffic already alongside a waiting merger does not brake to let it in',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ s.signals[1][0].mode='closed';
+ const waiting=s.spawn(0,2200,0);waiting.length=16.5;waiting.truck=true;waiting.cooldown=0;waiting.decision=0;
+ const passing=s.spawn(1,2192,28);passing.truck=false;passing.cooldown=1000;
+ const behind=s.spawn(1,2100,28);behind.truck=false;behind.cooldown=1000;
+ s.step(.1);assert.equal(passing.yieldingFor,null);assert.equal(behind.yieldingFor,null);assert(passing.v>27.9);
+});
+test('only the nearest rear driver is asked to make a merging gap',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ s.signals[1][0].mode='closed';
+ const waiting=s.spawn(0,2200,0);waiting.length=4.7;waiting.cooldown=0;waiting.decision=0;
+ const nearest=s.spawn(1,2165,24);nearest.cooldown=1000;
+ const second=s.spawn(1,2100,24);second.cooldown=1000;
+ s.step(.1);assert.equal(nearest.yieldingFor,waiting.id);assert.equal(second.yieldingFor,null);
+});
+test('an incident in the original lane stops influencing a vehicle once its body has cleared that lane',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ s.incidents=[{id:0,lane:0,x:2200,length:5,type:'debris',clearsAt:Infinity}];
+ const c=s.spawn(1,2170,10);c.truck=false;c.length=4.7;c.fromLane=0;c.visualLane=.85;c.cooldown=1000;c.a=0;
+ const before=c.v;s.step(.1);assert(c.v>=before);assert(!s.occupiedLanes(c).includes(0));
+});

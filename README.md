@@ -29,3 +29,5 @@ The motorway follows a narrower, gently curving ribbon. Road markings, gantry to
 The scenario menu has been replaced by live traffic advice. The desk locates the largest slow queue or an active incident, suggests a suitable upstream gantry, and offers an optional tap to apply stepped limits (40/50 or 50/60 mph) to open lanes only. These limits act through the normal following and merge model; there is no artificial throughput bonus. Stopped vehicles and hard-braking episodes (deceleration below 2.5 m/s²) show the effect alongside measured exit flow. Low limits can reduce throughput on clear roads.
 
 Detail now arms a location picker: tap a gantry or road point to choose the close-up, then navigate upstream/downstream or return with Show all. It no longer silently picks the last-used/default gantry.
+
+Courtesy yielding is assigned only to the nearest suitable rear neighbour of a waiting merger. Cars already alongside continue, and no gap request is made when the target lane has no space ahead. A transitioning vehicle stops reserving its original lane when its body has cleared the lane boundary, rather than waiting until the whole animation has settled.

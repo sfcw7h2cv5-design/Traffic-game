@@ -63,7 +63,7 @@ export class Simulation {
   obstacle(car, lane, traffic = this.cars) {
     let pos = LENGTH + 1000, speed = car.desired;
     for (const c of traffic) {
-      const occupying = c.lane === lane || (Math.abs(c.visualLane - c.lane) > .02 && c.fromLane === lane);
+      const occupying = c.lane === lane || (Math.abs(c.visualLane - c.lane) > .2 && c.fromLane === lane);
       if (c.id !== car.id && occupying && c.x >= car.x && c.x - c.length < pos) {
         pos = c.x - c.length; speed = c.v;
       }
@@ -148,7 +148,7 @@ export class Simulation {
     return incident;
   }
   occupiedLanes(c) {
-    return Math.abs(c.visualLane-c.lane)>.02?[c.lane,c.fromLane]:[c.lane];
+    return Math.abs(c.visualLane-c.lane)>.2?[c.lane,c.fromLane]:[c.lane];
   }
   enforceSeparation() {
     // Reserve both lanes throughout a manoeuvre; enforce a physical bumper gap
@@ -287,7 +287,7 @@ export class Simulation {
           if(lane<0||lane>2||(!escape&&this.laneHazardAhead(c.x,lane))||(c.truck&&lane===2&&!forced)||(this.signalAt(c.x,lane).mode!=='open'&&!escape))return false;
           if(!escape&&GANTRIES.some((x,g)=>x>c.x&&x-c.x<650&&this.signals[g][lane].mode!=='open'))return false;
           const ahead = this.obstacle(c, lane, this.cars);
-          const behind = this.cars.filter(o => o.id !== c.id && (o.lane === lane || (Math.abs(o.visualLane-o.lane)>.02&&o.fromLane===lane)) && o.x < c.x)
+          const behind = this.cars.filter(o => o.id !== c.id && (o.lane === lane || (Math.abs(o.visualLane-o.lane)>.2&&o.fromLane===lane)) && o.x < c.x)
             .sort((a, b) => b.x - a.x)[0];
           const rearGap = behind ? c.x - c.length - behind.x : 1000;
           const rearNeeded = forced&&c.v<2&&(behind?.v??0)<2?1.99:behind ? 5 + behind.v * (forced ? .85 : 1.5) + Math.max(0, behind.v - c.v) * (forced ? 1.5 : 3) : 0;
@@ -323,6 +323,23 @@ export class Simulation {
         if (target !== c.lane) { c.fromLane = c.lane; c.lane = target; c.cooldown = 8 + this.random() * 4;c.mergeRequest=null; }
       }
     }
+    // One waiting merger may ask its nearest rear neighbour to make space.
+    // Vehicles already alongside it should continue, rather than brake for it.
+    const yieldRequests=new Map();
+    for(const merger of this.cars){
+      if(merger.mergeRequest==null)continue;
+      const ahead=this.obstacle(merger,merger.mergeRequest);
+      if(ahead.gap<(merger.v<2?2:6+merger.v*.85))continue;
+      const receiver=this.cars.filter(c=>c.id!==merger.id&&!c.emergency&&c.lane===merger.mergeRequest&&c.x<merger.x-merger.length-2&&merger.x-c.x<120).sort((a,b)=>b.x-a.x)[0];
+      if(!receiver)continue;
+      // A vehicle alongside the merger will pass first; don't slow somebody
+      // behind that vehicle to reserve a gap the merger cannot yet reach.
+      const alongside=this.cars.some(c=>c.id!==merger.id&&c.id!==receiver.id&&this.occupiedLanes(c).includes(merger.mergeRequest)&&c.x>=merger.x-merger.length-2&&c.x-c.length<=merger.x+2);
+      if(alongside)continue;
+      const gap=merger.x-merger.length-receiver.x;
+      const needed=5+receiver.v*.9+Math.max(0,receiver.v-merger.v)*2;
+      if(gap<needed+8)yieldRequests.set(receiver.id,merger.id);
+    }
     const movementSnapshot=this.cars.map(c=>({...c}));
     for(const c of this.cars){
       if(c.recovering!=null){c.v=0;continue;}
@@ -335,19 +352,15 @@ export class Simulation {
       }
       let front=this.obstacle(c,c.lane,movementSnapshot);
 
-      if (Math.abs(c.visualLane - c.lane) > .02) {
+      if (Math.abs(c.visualLane - c.lane) > .2) {
         const oldFront = this.obstacle(c, c.fromLane, movementSnapshot);
         if (oldFront.gap < front.gap) front = oldFront;
       }
       const unruly = this.scenario === 'reckless' && c.reckless;
       const limit = this.speedTarget(c);
       let desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
-      const yielding=movementSnapshot.some(o=>{
-        if(o.id===c.id||o.mergeRequest!==c.lane||o.x<c.x+5||o.x>c.x+120)return false;
-        const gap=o.x-o.length-c.x;
-        const needed=5+c.v*.9+Math.max(0,c.v-o.v)*2;
-        return gap<needed+8;
-      });
+      const yielding=yieldRequests.has(c.id);
+      c.yieldingFor=yielding?yieldRequests.get(c.id):null;
       if(yielding&&!c.emergency)desired=Math.min(desired,Math.max(4,c.v-1.2));
       const headway = c.headway * (rain ? 1.35 : unruly ? .65 : 1);
       const closing = c.v - front.speed;
