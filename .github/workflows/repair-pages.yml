@@ -7,36 +7,22 @@ on:
 permissions:
   contents: read
   pages: write
-  id-token: write
 jobs:
   repair:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - name: Clear stale deployment blocking publication
+      - name: Reset inconsistent Pages deployment state
         uses: actions/github-script@v7
         with:
           script: |
-            try {
-              await github.request('POST /repos/{owner}/{repo}/pages/deployments/{pages_deployment_id}/cancel', {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pages_deployment_id: '06f33b340618e9b042b91db152477b4d73f617e0'
-              });
-            } catch (error) {
-              if (String(error.message).includes("as it's finished")) core.info('Previous deployment has already finished.');
-              else throw error;
+            const repo = { owner: context.repo.owner, repo: context.repo.repo };
+            const { data: pages } = await github.request('GET /repos/{owner}/{repo}/pages', repo);
+            if (pages.cname) throw new Error('Refusing to reset a custom-domain site.');
+            if (pages.source?.branch !== 'main' || pages.source?.path !== '/') {
+              throw new Error('Unexpected Pages source; refusing to replace it.');
             }
-      - uses: actions/checkout@v4
-      - name: Prepare static game
-        run: |
-          mkdir _site
-          cp index.html style.css app.js model.js .nojekyll _site/
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-      - name: Publish repaired game site
-        id: deployment
-        uses: actions/deploy-pages@v4
+            await github.request('DELETE /repos/{owner}/{repo}/pages', repo);
+            await github.request('POST /repos/{owner}/{repo}/pages', {
+              ...repo, build_type: 'legacy', source: pages.source
+            });
+            core.info('Restored Pages from main / with a fresh deployment state.');
