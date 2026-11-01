@@ -1,0 +1,5 @@
+import {test} from 'node:test';import assert from 'node:assert/strict';import {Simulation} from './model.js';
+function seeded(){let n=42;return ()=>((n=(n*1664525+1013904223)>>>0)/4294967296)}
+test('traffic advances, exits, and maintains finite nonnegative speeds',()=>{const s=new Simulation(seeded());for(let i=0;i<2400;i++)s.step(.1);assert(s.exits.length>0);for(const c of s.cars){assert(Number.isFinite(c.x));assert(c.v>=0&&c.v<45)}});
+test('closed lanes stop vehicles before the gantry when merging is unavailable',()=>{const s=new Simulation(seeded());s.cars=[];s.waiting=0;s.arrivals=-100;for(const g of s.signals)for(const l of g)l.mode='closed';s.spawn(1,350,20);for(let i=0;i<300;i++)s.step(.1);assert(s.cars[0].x<450);assert(s.cars[0].v<1)});
+test('incident blocks its lane and clearance removes the obstruction',()=>{const s=new Simulation(seeded());s.cars=[];s.spawn(1,2100,20);s.addIncident(1,2200);assert.equal(s.obstacle(s.cars[0],1).speed,0);assert.equal(s.obstacle(s.cars[0],1).gap,90);s.incidents=[];assert(s.obstacle(s.cars[0],1).gap>90)});
