@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createRoadGeometry,slipRoadPoint,roadworkCones} from './road.js';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,roadworkCones} from './road.js';
 import {layoutSprites} from './display.js';
 import {LENGTH,GANTRIES} from './model.js';
 test('narrow curved carriageway and every sign target stay inside mobile and desktop maps',()=>{
@@ -37,5 +37,27 @@ test('roadwork cones taper across closed lanes with space between every cone',()
   assert(Math.max(...cones.map(p=>p.x))-Math.min(...cones.map(p=>p.x))>=g.laneWidth*.9);
   for(let i=0;i<cones.length;i++)for(let j=i+1;j<cones.length;j++)assert(Math.hypot(cones[i].x-cones[j].x,cones[i].y-cones[j].y)>=6);
   assert(cones.some(p=>Math.abs(p.y-g.project(3800))<.001));
+ }
+});
+
+test('joining curve and pavement meet the motorway with matching tangents',()=>{
+ for(const width of [320,390,844])for(const view of [10000,400])for(const x of [1200,5900,9000]){
+  const g=createRoadGeometry(width,1055,LENGTH,view,x-200),r={x,mergeLength:600,approachLength:1100};
+  const join=slipRoadPoint(g,r,x),outer=slipRoadEdges(g,r,x);
+  assert.equal(join.x,g.laneX(x,0));assert.equal(outer.outer,g.leftAt(x));
+  assert(Math.abs(join.angle-g.angleAt(x))<1e-7);
+  const before=slipRoadPoint(g,r,x-.01),slope=(join.x-before.x)/.01;
+  const mainSlope=(g.laneX(x,0)-g.laneX(x-.01,0))/.01;
+  assert(Math.abs(slope-mainSlope)<.00001);
+  let sawSeparate=false,sawConnected=false;
+  for(let d=1100;d>=0;d-=5){
+   const p=slipRoadPoint(g,r,x-d),edge=slipRoadEdges(g,r,x-d);
+   assert(p.x<=g.laneX(x-d,0));assert(edge.outer<=g.leftAt(x-d)+1e-7);
+   assert(edge.inner>edge.outer);assert(Math.abs(edge.inner-edge.outer-g.laneWidth)<1e-7);assert(Number.isFinite(p.angle));
+   if(edge.connected)sawConnected=true;else sawSeparate=true;
+  }
+  assert(sawSeparate&&sawConnected);
+  const a=slipRoadPoint(g,r,x-600-.001),b=slipRoadPoint(g,r,x-600+.001);
+  assert(Math.abs(a.angle-b.angle)<.00001);
  }
 });

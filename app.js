@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=21';
-import {createSpriteLayout} from './display.js?v=21';
-import {createRoadGeometry,slipRoadPoint,roadworkCones} from './road.js?v=21';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=22';
+import {createSpriteLayout} from './display.js?v=22';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,roadworkCones} from './road.js?v=22';
 const placeSprites=createSpriteLayout();
 const elements=new Map(),$=s=>{if(!elements.has(s))elements.set(s,document.querySelector(s));return elements.get(s)},sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
@@ -114,18 +114,35 @@ function paintScenery(ctx,geo){
  ctx.fillStyle='#1d3938';ctx.fillRect(0,0,w,h);
  const path=offset=>{ctx.beginPath();for(let x=viewStart-500;x<=viewStart+VIEW_LENGTH+500;x+=20){const px=geo.center(x)+offset,py=y(x);if(x===viewStart-500)ctx.moveTo(px,py);else ctx.lineTo(px,py)}};
  ctx.lineCap='butt';path(0);ctx.strokeStyle='#283d40';ctx.lineWidth=roadW+20;ctx.stroke();path(0);ctx.strokeStyle='#35464a';ctx.lineWidth=roadW;ctx.stroke();
- for(const offset of [-roadW/2,roadW/2]){path(offset);ctx.strokeStyle='#a2b3a2';ctx.lineWidth=1;ctx.stroke()}
+ // Add the slip-road pavement before drawing markings, as part of the same
+ // surface. Its boundary opens into the motorway rather than crossing it.
+ for(const r of operations.ramps){
+  ctx.beginPath();
+  for(let d=r.approachLength??1100;d>=0;d-=5){const edge=slipRoadEdges(geo,r,r.x-d);if(d===(r.approachLength??1100))ctx.moveTo(edge.outer,edge.y);else ctx.lineTo(edge.outer,edge.y);}
+  for(let d=0;d<=(r.approachLength??1100);d+=5){const edge=slipRoadEdges(geo,r,r.x-d);ctx.lineTo(edge.inner,edge.y);}
+  ctx.closePath();ctx.fillStyle='#35464a';ctx.fill();
+ }
+ path(roadW/2);ctx.strokeStyle='#a2b3a2';ctx.lineWidth=1;ctx.stroke();
+ ctx.beginPath();let continuing=false;
+ for(let x=viewStart-500;x<=viewStart+VIEW_LENGTH+500;x+=10){
+  const joined=operations.ramps.some(r=>x<r.x&&x>=r.x-(r.mergeLength??600)&&slipRoadEdges(geo,r,x).connected);
+  if(joined){continuing=false;continue;}
+  const px=geo.leftAt(x),py=y(x);if(continuing)ctx.lineTo(px,py);else ctx.moveTo(px,py);continuing=true;
+ }
+ ctx.stroke();
+ for(const r of operations.ramps){
+  ctx.beginPath();
+  for(let d=r.approachLength??1100;d>=0;d-=5){const edge=slipRoadEdges(geo,r,r.x-d);if(d===(r.approachLength??1100))ctx.moveTo(edge.outer,edge.y);else ctx.lineTo(edge.outer,edge.y);}
+  ctx.strokeStyle='#a2b3a2';ctx.lineWidth=1;ctx.stroke();
+  ctx.beginPath();let active=false;
+  for(let d=r.approachLength??1100;d>=0;d-=5){const edge=slipRoadEdges(geo,r,r.x-d);if(edge.connected){if(active)ctx.lineTo(geo.leftAt(r.x-d),edge.y);break;}if(!active)ctx.moveTo(edge.inner,edge.y);else ctx.lineTo(edge.inner,edge.y);active=true;}
+  ctx.stroke();
+ }
  ctx.setLineDash([8,12]);for(const offset of [-roadW/2+lw,-roadW/2+lw*2]){path(offset);ctx.strokeStyle='#82938b88';ctx.lineWidth=1;ctx.stroke()}ctx.setLineDash([]);
  ctx.font='9px sans-serif';ctx.fillStyle='#91aa99';ctx.textAlign='right';
  const tick=VIEW_LENGTH===LENGTH?1000:100;
  for(let m=Math.ceil(viewStart/tick)*tick;m<=viewStart+VIEW_LENGTH;m+=tick){const left=geo.leftAt(m);ctx.fillText((m/1000).toFixed(1)+' km',left-17,y(m));ctx.fillRect(left-12,y(m),7,1)}
  ctx.save();ctx.translate(w-15,h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#79968c';ctx.font='9px sans-serif';ctx.fillText('NORTHBOUND  →',-45,0);ctx.restore();
-// Keep every vehicle symbol fixed in size; no numbered queue overlays.
-for(const r of operations.ramps){
- ctx.beginPath();
- for(let d=750;d>=0;d-=5){const p=slipRoadPoint(geo,r,r.x-d);if(d===750)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);}
- ctx.strokeStyle='#789187';ctx.lineWidth=12;ctx.stroke();ctx.strokeStyle='#30494a';ctx.lineWidth=9;ctx.stroke();
-}
 }
 // Reuse the small painted vehicle icons instead of rebuilding their paths
 // and details hundreds of times per frame.
@@ -136,14 +153,14 @@ function vehicleIcon(c){
  const flash=c.emergency||c.blocker?Math.floor(sim.elapsed*7)%2:c.static?Math.floor(sim.elapsed*2)%2:0;
  const key=family+'/'+color+'/'+!!c.towing+'/'+!!c.static+'/'+flash;
  if(!vehicleIcons.has(key)){
-  const icon=document.createElement('canvas'),height=c.designHeight,width=c.width,cx=7,cy=0;icon.width=28;icon.height=(height+2)*2;
+  const icon=document.createElement('canvas'),height=c.designHeight,width=c.designWidth??c.width,cx=7,cy=0;icon.width=28;icon.height=(height+2)*2;
   const ctx=icon.getContext('2d');ctx.scale(2,2);
  ctx.fillStyle=color;
  ctx.beginPath();ctx.roundRect(cx-width/2,cy,width,height,1);ctx.fill();ctx.fillStyle='#385a63';ctx.fillRect(cx-width/2+.6,cy+1,width-1.2,2);
- if(c.kind==='ambulance'||c.kind==='police'||c.kind==='roadblock'){ctx.fillStyle='#76a85c';ctx.fillRect(cx-width/2,cy+4,width,2);ctx.fillStyle=Math.floor(sim.elapsed*7)%2?'#45c5ff':'#e5faff';ctx.fillRect(cx-width/2-1,cy+2,3,2);ctx.fillRect(cx+width/2-2,cy+2,3,2)}
+ if(c.kind==='ambulance'||c.kind==='police'||c.kind==='roadblock'){ctx.fillStyle='#76a85c';ctx.fillRect(cx-width/2,cy+4,width,2);ctx.fillStyle=Math.floor(sim.elapsed*7)%2?'#45c5ff':'#e5faff';ctx.fillRect(cx-width/2,cy+2,2,2);ctx.fillRect(cx+width/2-2,cy+2,2,2)}
  if(c.kind==='recovery'){ctx.fillStyle='#fff3ab';ctx.fillRect(cx-4,cy+3,8,2);if(c.towing){ctx.fillStyle='#df8d72';ctx.fillRect(cx-2.5,cy+12,5,7)}}
  if(c.truck){ctx.fillStyle='#8c9571';ctx.fillRect(cx-width/2+1,cy+5,width-2,1)}
- if(c.static){if(Math.floor(sim.elapsed*2)%2===0){ctx.fillStyle='#ffd076';ctx.fillRect(cx-4,cy+height-2,2,2);ctx.fillRect(cx+2,cy+height-2,2,2)}
+ if(c.static){if(Math.floor(sim.elapsed*2)%2===0){ctx.fillStyle='#ffd076';ctx.fillRect(cx-width/2,cy+height-2,1.5,2);ctx.fillRect(cx+width/2-1.5,cy+height-2,1.5,2)}
  }
 
   vehicleIcons.set(key,icon);
@@ -157,7 +174,7 @@ function draw(){
  if(key!==sceneryKey){sceneryKey=key;scenery=document.createElement('canvas');scenery.width=canvas.width;scenery.height=canvas.height;const surface=scenery.getContext('2d');surface.setTransform(dpr,0,0,dpr,0,0);paintScenery(surface,geo);}
  ctx.setTransform(dpr,0,0,dpr,0,0);ctx.drawImage(scenery,0,0,w,h);
  for(const r of operations.ramps){
- if(r.mode==='closed'){const p=slipRoadPoint(geo,r,r.x-110);ctx.fillStyle='#16242b';ctx.fillRect(p.x-7,p.y-6,14,12);ctx.fillStyle='#ff7768';ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.fillText('×',p.x,p.y+5);}
+ if(r.mode==='closed'){const p=slipRoadPoint(geo,r,r.x-r.mergeLength+10);ctx.fillStyle='#16242b';ctx.fillRect(p.x-7,p.y-6,14,12);ctx.fillStyle='#ff7768';ctx.font='bold 14px sans-serif';ctx.textAlign='center';ctx.fillText('×',p.x,p.y+5);}
  }
 const work=operations.work;
 if(work.status!=='complete'&&sim.elapsed>=work.announceAt){const wy=y(work.x),wx=geo.leftAt(work.x);ctx.fillStyle='#e1bd73';ctx.font='8px sans-serif';ctx.textAlign='left';ctx.fillText('ROADWORKS '+(work.status==='working'?'ACTIVE':'DUE'),wx+geo.roadWidth+10,wy-13);}
@@ -171,7 +188,8 @@ for(const c of placeSprites(vehicles,sim.incidents,{left:geo.leftAt(0),laneWidth
  const {cx,cy,width}=c;const height=c.designHeight;
  if(cy+c.height<0||cy>h)continue;
  if(c.type==='roadworks'){if(!c.bodyIndex)incidentLabels.push(c);continue;}
- ctx.save();ctx.translate(cx,cy);ctx.rotate(c.angle);ctx.drawImage(vehicleIcon(c),-7,0,14,height+2);ctx.restore();
+ const sx=c.width/(c.designWidth??c.width),sy=c.height/height;
+ ctx.save();ctx.translate(cx,cy);ctx.rotate(c.angle);ctx.drawImage(vehicleIcon(c),-7*sx,0,14*sx,(height+2)*sy);ctx.restore();
  if(c.static){incidentMarkers.push(c);if(c.type==='shed-load'){ctx.fillStyle='#e7ad60';ctx.fillRect(cx-4,cy-2,3,3);ctx.fillRect(cx+1,cy+2,3,3);}if(!c.bodyIndex)incidentLabels.push(c);}
 }
 GANTRIES.forEach((g,gi)=>{const gy=y(g),left=geo.leftAt(g);if(gy<20||gy>h-20)return;ctx.fillStyle=gi===selected?'#bbdf86':'#6e8880';ctx.fillRect(left-12,gy,roadW+24,3);ctx.fillRect(left-12,gy,3,16);ctx.fillRect(left+roadW+9,gy,3,16);ctx.textAlign='left';ctx.font='bold 9px sans-serif';sim.signals[gi].forEach((s,l)=>{const x=left+(l+.5)*lw;ctx.fillStyle='#101e24';ctx.fillRect(x-14,gy-14,28,25);ctx.textAlign='center';ctx.font='bold 13px sans-serif';ctx.fillStyle=s.mode==='closed'?'#ff7768':s.mode==='merge'?'#efc676':'#e4ecdf';if(s.mode.startsWith('merge')){const dir=s.mode==='merge-left'||(s.mode==='merge'&&l===2)?-1:1;ctx.strokeStyle='#f1cc72';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x-dir*4,gy+5);ctx.lineTo(x+dir*5,gy-5);ctx.stroke();ctx.beginPath();ctx.moveTo(x+dir*5-dir*6,gy-5);ctx.lineTo(x+dir*5,gy-5);ctx.lineTo(x+dir*5,gy+1);ctx.stroke();}else ctx.fillText(s.mode==='closed'?'×':s.speed,x,gy+3);if(s.mode==='open'){ctx.strokeStyle='#e57869';ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(x,gy-2,10,0,Math.PI*2);ctx.stroke()}})});for(const c of incidentLabels){

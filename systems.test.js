@@ -9,17 +9,17 @@ function setup(){
  return s;
 }
 function run(s,seconds){for(let i=0;i<seconds*10;i++)s.step(.1);}
-function queuedCar(s,r){const d=r.queue.length?r.queue.at(-1).rampDistance+r.queue.at(-1).length+8:120;const c=s.spawn(0,r.x-d,0);s.cars.pop();c.rampDistance=d;c.slipRamp=r.id;r.queue.push(c);return c;}
+function queuedCar(s,r){const d=r.queue.length?r.queue.at(-1).rampDistance+r.queue.at(-1).length+8:r.mergeLength;const c=s.spawn(0,r.x-d,0);s.cars.pop();c.rampDistance=d;c.slipRamp=r.id;r.queue.push(c);return c;}
 test('closed slip road holds vehicles; open releases through a safe gap',()=>{
  const s=setup(),r=s.systems.ramps[0];const c=queuedCar(s,r);
  s.systems.setRampMode(0,'closed');run(s,10);assert(r.queue.includes(c));assert(!s.cars.includes(c));
  s.systems.setRampMode(0,'open');run(s,.1);assert(s.cars.includes(c));assert.equal(c.onRamp,0);assert.equal(r.joined,1);
- run(s,30);assert.equal(c.onRamp,null);assert(c.x>r.x);
+ run(s,90);assert.equal(c.onRamp,null);assert(c.x>r.x);
 });
 test('open slip road waits for physical traffic and obstructions at the joining point',()=>{
  const s=setup(),r=s.systems.ramps[0];const c=queuedCar(s,r);r.mode='open';
- s.spawn(0,r.x-120,0);run(s,.1);assert(r.queue.includes(c));
- s.cars=[];s.incidents=[{id:999,type:'debris',lane:0,x:r.x-120,length:5,clearsAt:Infinity}];run(s,.1);assert(r.queue.includes(c));
+ s.spawn(0,r.x-r.mergeLength,0);run(s,.1);assert(r.queue.includes(c));
+ s.cars=[];s.incidents=[{id:999,type:'debris',lane:0,x:r.x-r.mergeLength,length:5,clearsAt:Infinity}];run(s,.1);assert(r.queue.includes(c));
  s.incidents=[];run(s,.1);assert(s.cars.includes(c));assert.equal(r.joined,1);
 });
 test('slip-road drivers wait for a safe gap without deleting queue vehicles',()=>{
@@ -108,13 +108,13 @@ function assertSafeStep(s,lengths){
 }
 test('all open slip roads join and leave lane 1 for current or approaching closures and arrows',()=>{
  for(const rampId of [0,1,2])for(const mode of ['closed','merge-right'])for(const approach of [false,true]){
-  const s=setup(),r=s.systems.ramps[rampId],entry=r.x-120;
+  const s=setup(),r=s.systems.ramps[rampId],entry=r.x-r.mergeLength;
   const g=approach?GANTRIES.findIndex(x=>x>entry):GANTRIES.findLastIndex(x=>x<=entry);
   if(g<0)continue;
   s.signals[g][0].mode=mode;
   const c=queuedCar(s,r),traffic=s.spawn(1,r.x+150,20);
   const lengths=new Map([c,traffic].map(v=>[v.id,v.length]));let escaped=false;
-  for(let n=0;n<600;n++){assertSafeStep(s,lengths);if(c.onRamp==null&&c.lane===1){escaped=true;break;}}
+  for(let n=0;n<900;n++){assertSafeStep(s,lengths);if(c.onRamp==null&&c.lane===1){escaped=true;break;}}
   assert.equal(r.joined,1,r.name+' did not release for '+mode);
   assert.equal(r.queue.length,0);
   assert(escaped,r.name+' failed to merge for '+(approach?'upcoming ':'current ')+mode);
@@ -122,11 +122,11 @@ test('all open slip roads join and leave lane 1 for current or approaching closu
 });
 test('slip-road traffic can traverse two adjacent closures into the remaining open lane',()=>{
  for(const rampId of [0,1,2]){
-  const s=setup(),r=s.systems.ramps[rampId],current=GANTRIES.findLastIndex(x=>x<=r.x-120);
+  const s=setup(),r=s.systems.ramps[rampId],current=GANTRIES.findLastIndex(x=>x<=r.x-r.mergeLength);
   for(let g=current;g<GANTRIES.length;g++)for(const lane of [0,1])s.signals[g][lane].mode='closed';
   const c=queuedCar(s,r),traffic=s.spawn(2,r.x+180,20);
   const lengths=new Map([c,traffic].map(v=>[v.id,v.length]));let escaped=false;
-  for(let n=0;n<700;n++){assertSafeStep(s,lengths);if(c.onRamp==null&&c.lane===2&&Math.abs(c.visualLane-2)<.02){escaped=true;break;}}
+  for(let n=0;n<1000;n++){assertSafeStep(s,lengths);if(c.onRamp==null&&c.lane===2&&Math.abs(c.visualLane-2)<.02){escaped=true;break;}}
   assert.equal(r.joined,1);assert(escaped,r.name+' failed to reach lane 3');assert(s.cars.includes(c));
  }
 });
@@ -146,8 +146,8 @@ test('an actual work zone overlapping any part of the joining taper holds slip-r
  s.incidents=[];run(s,.1);assert(s.cars.includes(c));assert.equal(r.joined,1);
 });
 test('incidents behind or beyond the joining taper do not act as slip-road stop signs',()=>{
- for(const offset of [-170,30]){
-  const s=setup(),r=s.systems.ramps[0],c=queuedCar(s,r);
+ for(const behind of [true,false]){
+  const s=setup(),r=s.systems.ramps[0],c=queuedCar(s,r),offset=behind?-r.mergeLength-50:30;
   s.incidents=[{id:999,type:'debris',lane:0,x:r.x+offset,length:5,clearsAt:Infinity}];
   run(s,.1);assert(s.cars.includes(c));assert.equal(r.joined,1);assert.equal(r.queue.length,0);
  }
@@ -161,4 +161,27 @@ test('all-lane closures hold the slip road until an onward motorway lane reopens
   const c=queuedCar(s,r);run(s,5);assert(r.queue.includes(c));assert.equal(r.joined,0);
   s.signals[g][1].mode='open';run(s,.1);assert(s.cars.includes(c));assert.equal(r.joined,1);
  }
+});
+
+test('the extended slip-road join reserves its full corridor and progress follows physical distance',()=>{
+ const s=setup(),r=s.systems.ramps[0],c=queuedCar(s,r),length=c.length,entry=r.x-r.mergeLength;
+ assert.equal(r.mergeLength,600);assert.equal(r.approachLength,1100);
+ run(s,.1);assert(s.cars.includes(c));assert.equal(c.onRamp,r.id);assert(c.x>=entry&&c.x-entry<4);
+ let before=c.x,joined=false;
+ for(let n=0;n<1000;n++){
+  s.step(.1);assert(c.x>=before);assert(c.x-before<4);assert.equal(c.length,length);
+  if(c.onRamp!=null){assert(c.x<r.x+4);assert(Math.abs(c.rampProgress-(before-entry)/r.mergeLength)<1e-9);}
+  else{assert(c.x>=r.x);joined=true;break;}
+  before=c.x;
+ }
+ assert(joined);
+});
+
+test('work crews respect a vehicle still travelling through the longer joining corridor',()=>{
+ const s=setup(),o=s.systems,r=o.ramps[0],c=queuedCar(s,r);run(s,.1);
+ c.x=r.x-300;c.v=10;
+ o.work={...o.work,x:r.x-100,announceAt:0,startsAt:0};
+ o.protectWorks();run(s,.1);
+ assert.equal(c.onRamp,r.id);assert.equal(o.work.sceneId,null);assert.equal(o.work.status,'awaiting-protection');
+ s.cars=[];run(s,.1);assert.equal(o.work.status,'working');
 });

@@ -395,7 +395,7 @@ export class Simulation {
     const movementSnapshot=trafficSnapshot(this.cars);
     this._stepTrafficIndexes.set(movementSnapshot,trafficIndex(movementSnapshot));
     for(const c of this.cars){
-      if(c.onRamp!=null){const join=this.systems.ramps[c.onRamp].x;c.rampProgress=Math.max(0,Math.min(1,(c.x-(join-120))/120));if(c.x>=join){c.onRamp=null;c.slipRamp=null;}}
+      if(c.onRamp!=null){const ramp=this.systems.ramps[c.onRamp],join=ramp.x;c.rampProgress=Math.max(0,Math.min(1,(c.x-(join-ramp.mergeLength))/ramp.mergeLength));if(c.x>=join){c.onRamp=null;c.slipRamp=null;}}
       if(c.recovering!=null){c.v=0;continue;}
       if(c.lane<0){
         const front=this.obstacle(c,c.lane,movementSnapshot);

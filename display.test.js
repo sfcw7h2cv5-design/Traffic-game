@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {layoutSprites,createSpriteLayout} from './display.js';
+import {createRoadGeometry,slipRoadPoint} from './road.js';
 const options={left:90,laneWidth:55,project:x=>600-(x-1350)*1.41};
 function separated(sprites){
  for(let a=0;a<sprites.length;a++)for(let b=a+1;b<sprites.length;b++){
@@ -61,13 +62,59 @@ test('full-network overview draws every vehicle without density-dependent resizi
  const overview=layoutSprites(cars,incidents,{left:90,laneWidth:55,project:x=>550-x*.085,overview:true});
  const visible=overview.filter(c=>c.visible);
  assert.equal(visible.length,overview.length);assert(visible.some(c=>c.static));assert(visible.some(c=>c.emergency));
- assert(overview.every(c=>c.height===c.nominalHeight&&c.height===6));assert.equal(overview.length,61+incidents.length);
+ assert(overview.every(c=>c.height===c.nominalHeight));assert(overview.filter(c=>!c.emergency).every(c=>c.height===3));assert.equal(overview.length,61+incidents.length);
 
 });
 
-test('overview uses the same recognisable car, HGV and emergency icons as detail',()=>{
+test('overview keeps recognisable compact car, HGV and emergency artwork',()=>{
  const cars=[{id:1,x:1000,lane:0,visualLane:0},{id:2,x:1300,lane:1,visualLane:1,truck:true},{id:3,x:1600,lane:2,visualLane:2,kind:'ambulance'},{id:4,x:2000,lane:2,visualLane:2,kind:'police'},{id:5,x:2500,lane:-1,visualLane:-1,kind:'recovery'}];
  const detail=layoutSprites(cars,[],options),overview=layoutSprites(cars,[],{...options,project:x=>550-x*.085,overview:true});
- for(const c of overview){const d=detail.find(x=>x.id===c.id);assert.deepEqual([c.width,c.height],[d.width,d.height]);assert.equal(c.cy,550-c.x*.085);assert.equal(c.height,c.designHeight);}
+ for(const c of overview){const d=detail.find(x=>x.id===c.id);assert.deepEqual([c.designWidth,c.designHeight],[d.width,d.height]);assert(c.width<d.width&&c.height<d.height);assert.equal(c.cy,550-c.x*.085);}
  assert(overview.find(c=>c.truck).height>overview.find(c=>c.id===1).height);
+});
+
+function corners(c){
+ const cs=Math.cos(c.angle),sn=Math.sin(c.angle);
+ const points=[[-c.width/2,0],[c.width/2,0],[-c.width/2,c.height],[c.width/2,c.height]].map(([x,y])=>({x:c.cx+x*cs-y*sn,y:c.cy+x*sn+y*cs}));
+ return {left:Math.min(...points.map(p=>p.x)),right:Math.max(...points.map(p=>p.x)),top:Math.min(...points.map(p=>p.y)),bottom:Math.max(...points.map(p=>p.y))};
+}
+function packedApart(sprites){
+ const boxes=sprites.filter(c=>c.type!=='roadworks').map(c=>({c,...corners(c)}));
+ for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){
+  const a=boxes[i],b=boxes[j];
+  assert(!(a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top),'painted overlap '+a.c.id+'/'+b.c.id);
+ }
+ assert(!sprites.some(c=>c.packingOverflow),'icons spilled out of lane');
+}
+test('small overview icons stay separate in physically stopped mixed queues on narrow mobile roads',()=>{
+ for(const width of [320,390]){
+  const g=createRoadGeometry(width,940,10000),cars=[];let id=0;
+  for(let lane=0;lane<3;lane++){
+   let x=9200;
+   for(let n=0;n<180;n++){
+    const truck=n%5===0,kind=n%61===1?'police':n%67===2?'ambulance':null,length=kind==='ambulance'?7:truck?16.5:4.7;
+    cars.push({id:id++,x,lane,visualLane:lane,fromLane:lane,truck,kind,length,emergency:!!kind});x-=length+2;
+   }
+  }
+  const layout=createSpriteLayout(),opts={laneWidth:g.laneWidth,left:g.leftAt(0),project:g.project,laneX:g.laneX,angleAt:g.angleAt,overview:true};
+  const first=layout(cars,[],opts);packedApart(first);assert.equal(first.length,cars.length);
+  const sizes=new Map(first.map(c=>[c.id,[c.width,c.height]])),offsets=new Map(first.map(c=>[c.id,c.packedOffset]));
+  for(const c of cars)c.x+=.01;
+  const next=layout(cars,[],opts);packedApart(next);
+  for(const c of next){assert.deepEqual([c.width,c.height],sizes.get(c.id));assert.equal(c.cy,g.project(c.x));assert.equal(c.packedOffset,offsets.get(c.id));}
+ }
+});
+test('compact icons remain separate through actual closure and slip-road merges',async()=>{
+ const {Simulation}=await import('./model.js');let seed=73;
+ const s=new Simulation(()=>((seed=(seed*1664525+1013904223)>>>0)/4294967296));
+ s.nextIncident=s.nextEmergency=Infinity;s.signals[1][0].mode='closed';
+ s.systems.work.announceAt=s.systems.work.startsAt=s.systems.roadblock.startsAt=Infinity;
+ const g=createRoadGeometry(320,940,10000),layout=createSpriteLayout();
+ const opts={laneWidth:g.laneWidth,left:g.leftAt(0),project:g.project,laneX:g.laneX,angleAt:g.angleAt,overview:true,rampPosition:c=>slipRoadPoint(g,s.systems.ramps[c.onRamp??c.slipRamp],c.x)};
+ for(let step=0;step<700;step++){
+  s.step(.1);
+  const cars=[...s.cars,...s.systems.ramps.flatMap(r=>r.queue)],sprites=layout(cars,s.incidents,opts);packedApart(sprites);
+  assert.equal(sprites.filter(c=>!c.static).length,cars.length);
+ }
+ assert(s.systems.ramps.some(r=>r.joined>0));
 });

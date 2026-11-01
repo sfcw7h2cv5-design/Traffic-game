@@ -1,6 +1,6 @@
 // One projection is shared by the carriageway, vehicles and touch targets.
 export function createRoadGeometry(width,height,length,viewLength=length,viewStart=0){
- const roadWidth=Math.min(width*.36,220),laneWidth=roadWidth/3;
+ const roadWidth=Math.min(width*.28,172),laneWidth=roadWidth/3;
  const amplitude=Math.min(width*.12,65);
  const center=x=>width/2+amplitude*(.75*Math.sin(x/length*Math.PI*2-.7)+.25*Math.sin(x/length*Math.PI*4+.4));
  const leftAt=x=>center(x)-roadWidth/2;
@@ -12,14 +12,25 @@ export function createRoadGeometry(width,height,length,viewLength=length,viewSta
  return {width,height,roadWidth,laneWidth,leftAt,center,project,scale,laneX,angleAt};
 }
 
-// The slip road remains left of lane 1 until its final, gradual joining taper.
+// The acceleration lane follows a long, tangent-matched joining curve.
+// Geometry and drawing share the same path used by the vehicle icons.
 export function slipRoadPoint(geometry,ramp,worldX){
- const distance=ramp.x-worldX;
- const outside=geometry.laneWidth/2+24;
- const t=Math.max(0,Math.min(1,distance/120));
- const smooth=t*t*(3-2*t);
- const offset=distance>120?outside+(distance-120)*.16:outside*smooth;
- return {x:geometry.laneX(worldX,0)-offset,y:geometry.project(worldX)};
+ const distance=Math.max(0,ramp.x-worldX),mergeLength=ramp.mergeLength??600;
+ const outside=geometry.laneWidth+4,t=Math.max(0,Math.min(1,distance/mergeLength));
+ const smooth=t*t*(3-2*t),extra=Math.max(0,distance-mergeLength);
+ const offset=distance>mergeLength?outside+extra*extra*.00008:outside*smooth;
+ const centerSlope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2;
+ const curveSlope=distance>mergeLength?extra*.00016:outside*6*t*(1-t)/mergeLength;
+ return {x:geometry.laneX(worldX,0)-offset,y:geometry.project(worldX),angle:Math.atan2(centerSlope+curveSlope,geometry.scale)};
+}
+export function slipRoadEdges(geometry,ramp,worldX){
+ const p=slipRoadPoint(geometry,ramp,worldX),distance=Math.max(0,ramp.x-worldX),mergeLength=ramp.mergeLength??600;
+ const half=geometry.laneWidth/2;
+ const t=Math.max(0,Math.min(1,distance/mergeLength)),smooth=t*t*(3-2*t);
+ // The outer boundary meets the motorway edge tangentially; it never cuts
+ // across the running lane or leaves a painted end cap on the carriageway.
+ const outer=distance>mergeLength?p.x-half:geometry.leftAt(worldX)-(geometry.laneWidth+4)*smooth;
+ return {outer,inner:p.x+half,y:p.y,connected:p.x+half>=geometry.leftAt(worldX)};
 }
 
 // Space cones by screen distance, not a fixed count in a tiny patch of road.
