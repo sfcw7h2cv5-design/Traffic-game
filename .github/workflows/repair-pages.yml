@@ -1,0 +1,37 @@
+name: Repair stuck Pages publication
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/repair-pages.yml]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Clear stale deployment blocking publication
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.request('POST /repos/{owner}/{repo}/pages/deployments/{pages_deployment_id}/cancel', {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pages_deployment_id: '06f33b340618e9b042b91db152477b4d73f617e0'
+            });
+      - uses: actions/checkout@v4
+      - name: Prepare static game
+        run: |
+          mkdir _site
+          cp index.html style.css app.js model.js .nojekyll _site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Publish repaired game site
+        id: deployment
+        uses: actions/deploy-pages@v4
