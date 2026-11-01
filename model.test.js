@@ -317,3 +317,34 @@ test('closing all lanes cancels a previously chosen escape destination',()=>{
  for(const signal of s.signals[1])signal.mode='closed';run(s,10);
  assert.equal(c.evacuationGoal,null);assert.equal(c.lane,0);assert(c.x<1550);
 });
+
+test('queue guidance identifies the tail and a gantry upstream of it',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ for(const x of [3200,3220,3240])s.spawn(0,x,0);
+ const advice=s.trafficAdvice();assert.equal(advice.kind,'queue');assert.equal(advice.tail,3200);
+ assert.equal(advice.gantry,2);assert.equal(advice.targetSpeed,40);assert.equal(advice.stopped,3);
+});
+test('clear-road advice does not recommend slowing traffic without a queue or incident',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];s.spawn(0,2000,28);
+ const advice=s.trafficAdvice();assert.equal(advice.kind,'clear');assert.equal(advice.gantry,-1);
+});
+test('a measured upstream speed restriction reduces peak braking on a queue approach',()=>{
+ const peaks=[];
+ for(const controlled of [false,true]){
+  const s=new Simulation(()=>.5);quiet(s);s.cars=[];
+  for(const g of s.signals)g[1].mode=g[2].mode='closed';
+  const c=s.spawn(0,1900,30);Object.assign(c,{truck:false,length:4.7,desired:31,acceleration:1.3,courtesy:1,reaction:1});
+  s.incidents=[{id:0,lane:0,x:3300,length:4.7,type:'debris',clearsAt:Infinity}];
+  if(controlled)s.signals[2][0].speed=40;
+  let peak=0;for(let i=0;i<1500;i++){s.step(.1);peak=Math.max(peak,-c.a);}peaks.push(peak);
+  assert(c.x<3300);assert(c.v<.5);
+ }
+ assert(peaks[1]<peaks[0]*.9,JSON.stringify(peaks));
+});
+test('hard braking counts episodes and expires them after one simulated minute',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ for(const g of s.signals)g[1].mode=g[2].mode='closed';
+ s.spawn(0,2135,30);s.incidents=[{id:0,lane:0,x:2200,length:5,type:'debris',clearsAt:Infinity}];
+ run(s,2);assert(s.trafficAdvice().hardBrakes>0);assert(s.trafficAdvice().hardBrakes<=2);
+ run(s,90);assert.equal(s.trafficAdvice().hardBrakes,0);
+});

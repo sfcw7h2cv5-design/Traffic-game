@@ -25,3 +25,7 @@ Closure evacuation plans a route to an open lane, taking one adjacent lane at a 
 Drivers commit to a chosen evacuation lane until they reach it, and avoid returning toward an incident until they have passed it. Routine overtaking and return-left use separated thresholds and a longer cooldown to prevent weaving. An open lane slows for a nearby driver only when that driver has requested a merge into it and needs a rear gap; incidents in other lanes have no rubbernecking speed penalty.
 
 The motorway follows a narrower, gently curving ribbon. Road markings, gantry touch targets, vehicles and incident markers share one world-to-screen projection; vehicle headings follow the bends. Initial vehicles retain the same spacing distribution and arrival rates, so extending the road increases vehicle count without changing density per kilometre.
+
+The scenario menu has been replaced by live traffic advice. The desk locates the largest slow queue or an active incident, suggests a suitable upstream gantry, and offers an optional tap to apply stepped limits (40/50 or 50/60 mph) to open lanes only. These limits act through the normal following and merge model; there is no artificial throughput bonus. Stopped vehicles and hard-braking episodes (deceleration below 2.5 m/s²) show the effect alongside measured exit flow. Low limits can reduce throughput on clear roads.
+
+Detail now arms a location picker: tap a gantry or road point to choose the close-up, then navigate upstream/downstream or return with Show all. It no longer silently picks the last-used/default gantry.

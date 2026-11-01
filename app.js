@@ -1,12 +1,11 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=15';
-import {createSpriteLayout} from './display.js?v=15';
-import {createRoadGeometry} from './road.js?v=15';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=16';
+import {createSpriteLayout} from './display.js?v=16';
+import {createRoadGeometry} from './road.js?v=16';
 const placeSprites=createSpriteLayout();
 const $=s=>document.querySelector(s),sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
-let VIEW_LENGTH=LENGTH,viewStart=0;
+let VIEW_LENGTH=LENGTH,viewStart=0,detailArmed=false,lastDeskUpdate=-Infinity;
 const canvas=$('#road'),ctx=canvas.getContext('2d'),editor=$('#inlineSignals');
-const descriptions={commute:'Steady arrivals with a mix of cars and HGVs.',busy:'Peak demand. Protect queue tails with upstream limits.',incident:'Random incidents need protection and vehicle recovery.',rain:'Wet conditions increase following distances.',reckless:'Watch for unpredictable drivers and braking waves.'};
 function notify(text){$('#event').textContent=text}
 function closeEditor(){editor.hidden=true;editorOpener?.setAttribute('aria-expanded','false')}
 function roadGeometry(){return createRoadGeometry(canvas.clientWidth,canvas.clientHeight,LENGTH,VIEW_LENGTH,viewStart)}
@@ -21,25 +20,55 @@ function renderEditor(){
  $('#inlineModes').innerHTML=modes.map(([mode,label])=>`<button data-mode="${mode}" aria-pressed="${signals.every(s=>s.mode===mode)}">${label}</button>`).join('');
  updateInlineReading();positionEditor();
 }
-$('#gantryTargets').onclick=e=>{const b=e.target.closest('[data-gantry]');if(!b)return;closeEditor();editorOpener=b;selected=+b.dataset.gantry;laneScope=b.dataset.lane;editor.hidden=false;b.setAttribute('aria-expanded','true');renderEditor()};
+$('#gantryTargets').onclick=e=>{const b=e.target.closest('[data-gantry]');if(!b)return;if(detailArmed){selected=+b.dataset.gantry;openDetail(GANTRIES[selected]);return;}closeEditor();editorOpener=b;selected=+b.dataset.gantry;laneScope=b.dataset.lane;editor.hidden=false;b.setAttribute('aria-expanded','true');renderEditor()};
 $('#inlineSpeeds').onclick=e=>{const b=e.target.closest('[data-speed]');if(!b)return;const lanes=laneScope==='all'?[0,1,2]:[+laneScope];lanes.forEach(l=>sim.signals[selected][l].speed=+b.dataset.speed);renderEditor()};
 $('#inlineModes').onclick=e=>{const b=e.target.closest('[data-mode]');if(!b)return;(laneScope==='all'?[0,1,2]:[+laneScope]).forEach(l=>sim.signals[selected][l].mode=b.dataset.mode==='merge-left'&&l===0||b.dataset.mode==='merge-right'&&l===2?'open':b.dataset.mode);renderEditor()};
 $('#closeInline').onclick=closeEditor;
 editor.addEventListener('click',e=>e.stopPropagation());
-$('.mapwrap').addEventListener('click',e=>{if(!e.target.closest('#inlineSignals')&&!e.target.closest('[data-gantry]'))closeEditor()});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEditor()});
+$('.mapwrap').addEventListener('click',e=>{
+ if(detailArmed){
+  const rect=canvas.getBoundingClientRect(),geo=roadGeometry();
+  const world=viewStart+((VIEW_LENGTH===LENGTH?geo.height+24:geo.height-46)-(e.clientY-rect.top))/geo.scale;
+  openDetail(world);return;
+ }
+ if(!e.target.closest('#inlineSignals')&&!e.target.closest('[data-gantry]'))closeEditor();
+});
+function updateDetailNavigation(){
+ $('#detailNavigation').hidden=VIEW_LENGTH===LENGTH;
+ $('#detailRange').textContent=(viewStart/1000).toFixed(2)+'–'+((viewStart+VIEW_LENGTH)/1000).toFixed(2)+' km';
+ $('#detailPrevious').disabled=viewStart<=0;$('#detailNext').disabled=viewStart+VIEW_LENGTH>=LENGTH;
+}
+function openDetail(x){
+ detailArmed=false;$('#zoomPrompt').hidden=true;VIEW_LENGTH=400;viewStart=Math.max(0,Math.min(LENGTH-400,x-200));
+ $('#viewMode').textContent='Show all';$('#viewMode').setAttribute('aria-pressed','true');closeEditor();positionTargets();updateDetailNavigation();
+}
+function showAll(){detailArmed=false;VIEW_LENGTH=LENGTH;viewStart=0;$('#zoomPrompt').hidden=true;$('#viewMode').textContent='Detail';$('#viewMode').setAttribute('aria-pressed','false');closeEditor();positionTargets();updateDetailNavigation();}
 $('#viewMode').onclick=()=>{
- const overview=VIEW_LENGTH===LENGTH;VIEW_LENGTH=overview?400:LENGTH;
- viewStart=overview?Math.max(0,Math.min(LENGTH-VIEW_LENGTH,GANTRIES[selected]-VIEW_LENGTH/2)):0;
- $('#viewMode').textContent=overview?'Show all':'Detail';
- $('#viewMode').setAttribute('aria-pressed',String(overview));closeEditor();positionTargets();
+ if(VIEW_LENGTH!==LENGTH){showAll();return;}
+ detailArmed=!detailArmed;closeEditor();$('#zoomPrompt').hidden=!detailArmed;$('#viewMode').textContent=detailArmed?'Cancel zoom':'Detail';$('#viewMode').setAttribute('aria-pressed',String(detailArmed));
 };
-new ResizeObserver(positionTargets).observe(canvas);positionTargets();
+$('#detailPrevious').onclick=()=>{viewStart=Math.max(0,viewStart-400);closeEditor();positionTargets();updateDetailNavigation()};
+$('#detailNext').onclick=()=>{viewStart=Math.min(LENGTH-400,viewStart+400);closeEditor();positionTargets();updateDetailNavigation()};
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(detailArmed)showAll();else closeEditor()}});
+new ResizeObserver(positionTargets).observe(canvas);positionTargets();updateDetailNavigation();
+function updateTrafficDesk(){
+ const advice=sim.trafficAdvice();$('#stoppedCount').textContent=advice.stopped;$('#brakingCount').textContent=advice.hardBrakes;
+ const g=advice.gantry;
+ $('#trafficAdvice').textContent=advice.kind==='queue'?(g>=0?`Queue tail at ${(advice.tail/1000).toFixed(2)} km. Try ${advice.targetSpeed} mph at G0${g+1} to smooth approaching traffic.`:'A queue has reached the entry. Keep the open lanes flowing and monitor recovery.'):advice.kind==='incident'?`Incident ahead at ${(advice.tail/1000).toFixed(2)} km. ${g>=0?'Consider 50 mph at G0'+(g+1)+' before traffic builds.':'Protect approaching traffic with your signals.'}`:'Traffic is flowing. Higher limits suit a clear road; lower limits are useful before queues, not everywhere.';
+ const open=g>=0?sim.signals[g].filter(s=>s.mode==='open'):[];const matched=open.length>0&&open.every(s=>s.speed===advice.targetSpeed);
+ $('#applyAdvice').hidden=g<0||advice.kind==='clear';$('#applyAdvice').disabled=matched||!open.length;
+ $('#applyAdvice').textContent=!open.length?'Selected approach has no open lanes':matched?'Approach limits set · monitor flow':'Set suggested approach limits';
+}
+$('#applyAdvice').onclick=()=>{
+ const advice=sim.trafficAdvice();if(advice.gantry<0||advice.kind==='clear')return;
+ sim.signals[advice.gantry].forEach(s=>{if(s.mode==='open')s.speed=advice.targetSpeed});
+ if(advice.gantry>0)sim.signals[advice.gantry-1].forEach(s=>{if(s.mode==='open')s.speed=Math.min(s.speed,advice.targetSpeed+10)});
+ notify(`Approach limits set before ${(advice.tail/1000).toFixed(2)} km. Watch braking and flow, and raise limits when the queue clears.`);updateTrafficDesk();if(!editor.hidden)renderEditor();
+};
 function updateResponseStatus(){const responders=sim.cars.filter(c=>c.emergency&&c.x>=0&&c.x<LENGTH).sort((a,b)=>b.v-a.v);$('#responseStatus').textContent=responders.length?(responders[0].kind==='police'?'Police':'Ambulance')+' · '+Math.round(responders[0].v/.44704)+' mph':'Network connected'}
 function updateInlineReading(){if(editor.hidden)return;const cars=sim.cars.filter(c=>c.x>=GANTRIES[selected]&&c.x<(GANTRIES[selected+1]??LENGTH)&&(laneScope==='all'?c.lane>=0:c.lane===+laneScope));$('#inlineActual').textContent=cars.length?'Actual '+Math.round(cars.reduce((n,c)=>n+c.v,0)/cars.length/.44704)+' mph · changes apply downstream':'No traffic in this section'}
 $('#pause').onclick=()=>{paused=!paused;$('#pause').textContent=paused?'▶':'❚❚';$('#pause').setAttribute('aria-label',paused?'Resume simulation':'Pause simulation')};
 $('#rate').onclick=()=>{rate=rate===1?2:rate===2?4:1;$('#rate').textContent=rate+'×'};
-$('#scenario').onchange=e=>{sim.scenario=e.target.value;$('#scenarioText').textContent=descriptions[sim.scenario];if(sim.scenario==='incident')sim.nextIncident=Math.min(sim.nextIncident,sim.elapsed+10)};
 $('#help').onclick=()=>$('#guide').showModal();$('#closeHelp').onclick=$('#begin').onclick=()=>$('#guide').close();
 // iPhone permits audio only after a deliberate user gesture.
 let audio=null,osc=null,gain=null,sound=false;
@@ -88,4 +117,4 @@ GANTRIES.forEach((g,gi)=>{const gy=y(g),left=geo.leftAt(g);if(gy<20||gy>h-20)ret
 }
 for(const c of incidentMarkers){ctx.strokeStyle='#ffab85';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(c.cx,c.cy+3,7,0,Math.PI*2);ctx.stroke();}
 ctx.textAlign='center';ctx.fillStyle='#93b29e';ctx.font='9px sans-serif';ctx.fillText('↑     ↑     ↑',w/2,h-18)}
-let last=performance.now(),accumulator=0,seenEvent=0;function frame(now){const delta=Math.min((now-last)/1000,.15);last=now;if(!paused){accumulator+=delta*rate*3;while(accumulator>=.1){sim.step(.1);accumulator-=.1}}if(sim.eventId!==seenEvent){seenEvent=sim.eventId;notify(sim.lastEvent)}draw();updateInlineReading();updateResponseStatus();updateSiren();$('#flow').innerHTML=`${sim.exits.length*60} <small>veh/h</small>`;$('#speed').innerHTML=`${Math.round(sim.cars.reduce((a,c)=>a+c.v,0)/Math.max(1,sim.cars.length)/.44704)} <small>mph</small>`;$('#vehicles').textContent=sim.cars.length;$('#queue').textContent=`${sim.waiting} waiting at entry`;const minutes=480+Math.floor(sim.elapsed/60);$('#time').textContent=`${String(Math.floor(minutes/60)%24).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`;requestAnimationFrame(frame)}requestAnimationFrame(frame);
+let last=performance.now(),accumulator=0,seenEvent=0;function frame(now){const delta=Math.min((now-last)/1000,.15);last=now;if(!paused){accumulator+=delta*rate*3;while(accumulator>=.1){sim.step(.1);accumulator-=.1}}if(sim.eventId!==seenEvent){seenEvent=sim.eventId;notify(sim.lastEvent)}draw();updateInlineReading();updateResponseStatus();if(now-lastDeskUpdate>500){updateTrafficDesk();lastDeskUpdate=now;}updateSiren();$('#flow').innerHTML=`${sim.exits.length*60} <small>veh/h</small>`;$('#speed').innerHTML=`${Math.round(sim.cars.reduce((a,c)=>a+c.v,0)/Math.max(1,sim.cars.length)/.44704)} <small>mph</small>`;$('#vehicles').textContent=sim.cars.length;$('#queue').textContent=`${sim.waiting} waiting at entry`;const minutes=480+Math.floor(sim.elapsed/60);$('#time').textContent=`${String(Math.floor(minutes/60)%24).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`;requestAnimationFrame(frame)}requestAnimationFrame(frame);

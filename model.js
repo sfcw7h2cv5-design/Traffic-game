@@ -11,6 +11,7 @@ export class Simulation {
     this.nextArrival = 1 + random() * 3;
     this.nextIncident = 35 + random() * 30;
     this.eventId = 0; this.lastEvent = '';
+    this.hardBrakeEvents=[];
     this.incidentZones=[];
     this.incidentId = 0; this.nextEmergency = 20 + random() * 25;
     // Stagger each lane independently; most traffic starts in the running lane.
@@ -55,7 +56,7 @@ export class Simulation {
     if (next >= 0 && GANTRIES[next] - car.x < 400) {
       const posted = this.signals[next][car.lane].speed * .44704;
       const distance = Math.max(0, GANTRIES[next] - car.x - 15);
-      target = Math.min(target, Math.sqrt(posted * posted + 2 * 1.5 * distance));
+      target = Math.min(target, Math.sqrt(posted * posted + 2 * 1.0 * distance));
     }
     return target;
   }
@@ -196,6 +197,21 @@ export class Simulation {
         this.lastEvent='Recovery on scene · loading the broken-down vehicle.';this.eventId++;
       }
     }
+  }
+  trafficAdvice(){
+    const road=this.cars.filter(c=>c.lane>=0&&!c.emergency);
+    const slow=road.filter(c=>c.v<5&&c.x>300).sort((a,b)=>a.x-b.x);
+    let groups=[],group=[];
+    for(const c of slow){if(group.length&&c.x-group.at(-1).x>200){if(group.length>=3)groups.push(group);group=[];}group.push(c);}
+    if(group.length>=3)groups.push(group);
+    groups.sort((a,b)=>b.length-a.length);
+    const queue=groups[0];
+    const tail=queue?queue[0].x:this.incidents.length?Math.min(...this.incidents.map(i=>i.x)):null;
+    const gantry=tail==null?-1:GANTRIES.findLastIndex(g=>g<tail-(queue?100:250));
+    return {kind:queue?'queue':tail!=null?'incident':'clear',tail,gantry,
+      targetSpeed:queue?40:tail!=null?50:70,
+      stopped:road.filter(c=>c.v<.5).length,slow:queue?.length??0,
+      hardBrakes:this.hardBrakeEvents.filter(t=>t>this.elapsed-60).length};
   }
   step(dt) {
     this.elapsed += dt;
@@ -343,6 +359,9 @@ export class Simulation {
       if (c.restart > 0 && c.v < .4) acceleration = Math.min(0, acceleration);
       const targetA = clamp(acceleration, -6, c.acceleration);
       c.a += (targetA - c.a) * Math.min(1, dt / (targetA < -2 ? .18 : c.reaction));
+      const hardBraking=c.a < -2.5;
+      if(hardBraking&&!c.hardBraking&&!c.emergency)this.hardBrakeEvents.push(this.elapsed);
+      c.hardBraking=hardBraking;
       const nextV = Math.max(0, c.v + c.a * dt);
       const requested = Math.max(0, (c.v + nextV) * .5 * dt);
       const move = Math.min(Math.max(0, front.gap - 2), requested);
@@ -355,5 +374,6 @@ export class Simulation {
       if (c.x > LENGTH) { this.exits.push(this.elapsed); return false; } return true;
     });
     this.exits = this.exits.filter(t => t > this.elapsed - 60);
+    this.hardBrakeEvents=this.hardBrakeEvents.filter(t=>t>this.elapsed-60);
   }
 }
