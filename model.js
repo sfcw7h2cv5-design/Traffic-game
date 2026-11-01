@@ -243,6 +243,26 @@ export class Simulation {
         this.lastEvent='Recovery on scene · loading the broken-down vehicle.';this.eventId++;
       }
     }
+    // The shoulder is only a route to an active recovery. Once loading has
+    // finished, give way here and join the running lane through a real gap.
+    for(const tow of this.cars){
+      if(tow.kind==='recovery'&&tow.recoveryTarget!=null&&!this.incidents.some(i=>i.id===tow.recoveryTarget)){
+        tow.recoveryTarget=null;tow.recovering=null;
+      }
+      if(tow.kind!=='recovery'||tow.lane>=0||tow.recoveryTarget!=null||tow.recovering!=null)continue;
+      tow.needsRoadRejoin=true;
+      if(this.signalAt(tow.x,0).mode==='closed')continue;
+      const ahead=this.obstacle(tow,0),speed=Math.max(0,tow.v);
+      if(ahead.gap<8+speed*1.5+Math.max(0,speed-ahead.speed)*4.5)continue;
+      let rear=null;
+      for(const car of this.cars)if(car.id!==tow.id&&this.occupiedLanes(car).includes(0)&&car.x<tow.x&&(!rear||car.x>rear.x))rear=car;
+      const rearGap=rear?tow.x-tow.length-rear.x:Infinity;
+      const requiredRear=rear?8+rear.v*1.5+Math.max(0,rear.v-speed)*4.5:0;
+      if(rearGap<requiredRear)continue;
+      tow.fromLane=-1;tow.lane=0;tow.visualLane=-1;
+      tow.laneChange={from:-1,to:0,progress:0,duration:4.5};tow.laneChangeRate=0;
+      tow.cooldown=8;tow.decision=1;tow.needsRoadRejoin=false;tow.mergeRequest=null;
+    }
   }
   trafficAdvice(){
     const road=this.cars.filter(c=>c.lane>=0&&!c.emergency);
@@ -275,7 +295,7 @@ export class Simulation {
       this.eventId++;
       for(const incident of cleared) {
         const tow=this.cars.find(c=>c.recovering===incident.id);
-        if(tow){tow.recovering=null;tow.recoveryTarget=null;tow.towing=true;tow.cooldown=0;}
+        if(tow){tow.recovering=null;tow.recoveryTarget=null;tow.towing=true;tow.cooldown=0;tow.needsRoadRejoin=true;}
       }
     }
     if (this.elapsed >= this.nextIncident) {
@@ -314,30 +334,63 @@ export class Simulation {
       c.cooldown -= dt; c.decision -= dt;
       const sig = this.signalAt(c.x, c.lane);
       let front = this.obstacle(c, c.lane, snapshot);
-      const upcoming = GANTRIES.findIndex((x, g) => x > c.x && x - c.x < 650 && this.signals[g][c.lane].mode !== 'open');
-      const warning = sig.mode!=='open'?sig:upcoming>=0?this.signals[upcoming][c.lane]:sig;
+      // A future merge arrow is advisory in its own downstream section. It
+      // must not send traffic out of today's only open lane into a red X.
+      const upcoming = GANTRIES.findIndex((x, g) => x > c.x && x - c.x < 650 && this.signals[g][c.lane].mode === 'closed');
+      const hazard=this.laneHazardAhead(c.x,c.lane),currentClosed=sig.mode==='closed',advisory=sig.mode.startsWith('merge');
+      const boundaryTransition=upcoming>=0&&GANTRIES[upcoming]-c.x<=30;
+      const transitionIndex=c.transitionGantry??-1,transitionGoal=c.evacuationGoal;
+      const transitionPlan=transitionIndex>=0&&transitionGoal!=null&&c.x<GANTRIES[transitionIndex]&&c.x>=GANTRIES[transitionIndex]-35&&this.signals[transitionIndex][transitionGoal].mode==='open';
+      if(!transitionPlan)c.transitionGantry=null;
+      const mandatory=currentClosed||hazard,forced=mandatory||upcoming>=0||advisory||transitionPlan;
       const approachingSiren=!c.emergency&&sirens.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<600);
-      const forced = sig.mode !== 'open' || upcoming >= 0 || this.laneHazardAhead(c.x,c.lane);
-      // Plan a route to an actually open lane, one adjacent lane at a time.
-      // Two adjacent red Xs must not strand a driver in the inner closed lane.
-      const destinations=[0,1,2].filter(l=>l!==c.lane&&!this.laneHazardAhead(c.x,l)&&(sig.mode!=='open'||upcoming<0?this.signalAt(c.x,l).mode==='open':this.signals[upcoming][l].mode==='open'));
-      const preferred=warning.mode.startsWith('merge')?Math.sign(this.mergeTarget(warning.mode,c.lane)-c.lane):0;
-      destinations.sort((a,b)=>{
-        const pa=preferred&&Math.sign(a-c.lane)!==preferred?1:0,pb=preferred&&Math.sign(b-c.lane)!==preferred?1:0;
-        return Number(b===c.evacuationGoal)-Number(a===c.evacuationGoal)||pa-pb||Math.abs(a-c.lane)-Math.abs(b-c.lane);
-      });
-      if(forced&&destinations.length)c.evacuationGoal=destinations[0];
-      else c.evacuationGoal=null;
-      const evacuationSteps=forced&&c.evacuationGoal!=null?[c.lane+Math.sign(c.evacuationGoal-c.lane)]:[];
-      c.mergeRequest=forced&&evacuationSteps.length&&Math.abs(c.visualLane-c.lane)<=.02?evacuationSteps[0]:null;
+      let destinations=[];
+      if(transitionPlan){
+        destinations=transitionGoal===c.lane?[]:[transitionGoal];
+      }else if(mandatory){
+        destinations=[0,1,2].filter(l=>l!==c.lane&&this.signalAt(c.x,l).mode==='open'&&!this.laneHazardAhead(c.x,l));
+        if(boundaryTransition&&c.evacuationGoal!=null&&c.evacuationGoal!==c.lane&&this.signals[upcoming][c.evacuationGoal].mode==='open'&&!this.laneHazardAhead(c.x,c.evacuationGoal))destinations.push(c.evacuationGoal);
+      }else if(upcoming>=0){
+        // Prefer a lane usable on both sides of the gantry. If the only open
+        // lane changes, wait at the boundary before crossing into the new lane.
+        destinations=[0,1,2].filter(l=>l!==c.lane&&this.signals[upcoming][l].mode==='open'&&!this.laneHazardAhead(c.x,l)&&(this.signalAt(c.x,l).mode!=='closed'||boundaryTransition));
+      }else if(advisory){
+        // Follow arrows only through currently usable lanes towards an open
+        // lane. Contradictory arrows or a closed destination mean "wait", not
+        // repeated left/right manoeuvres.
+        const visited=new Set([c.lane]);let lane=c.lane;
+        while(true){
+          const mode=this.signalAt(c.x,lane).mode;
+          if(mode==='open'){destinations=[lane];break;}
+          if(!mode.startsWith('merge'))break;
+          const next=lane+Math.sign(this.mergeTarget(mode,lane)-lane);
+          if(next<0||next>2||visited.has(next)||this.signalAt(c.x,next).mode==='closed'||this.laneHazardAhead(c.x,next))break;
+          visited.add(next);lane=next;
+        }
+      }
+      destinations.sort((a,b)=>Number(b===c.evacuationGoal)-Number(a===c.evacuationGoal)||Math.abs(a-c.lane)-Math.abs(b-c.lane));
+      c.evacuationGoal=transitionPlan?transitionGoal:forced&&destinations.length?destinations[0]:null;
+      if(boundaryTransition&&c.evacuationGoal!=null&&this.signals[upcoming][c.evacuationGoal].mode==='open')c.transitionGantry=upcoming;
+      const evacuationSteps=c.evacuationGoal!=null&&c.evacuationGoal!==c.lane?[c.lane+Math.sign(c.evacuationGoal-c.lane)]:[];
+      c.mergeRequest=evacuationSteps.length&&!c.laneChange&&Math.abs(c.visualLane-c.lane)<=.02?evacuationSteps[0]:null;
       if (c.decision <= 0 && (c.cooldown <= 0 || forced || approachingSiren || c.emergency) && !c.laneChange && Math.abs(c.visualLane - c.lane) <= .02) {
         c.decision = (c.emergency||approachingSiren)?.25+this.random()*.25:.7+this.random()*.8;
         let target = c.lane;
         const safe = lane => {
-          const escape=forced&&evacuationSteps.includes(lane);
-          if(lane<0||lane>2||(!escape&&this.laneHazardAhead(c.x,lane))||(c.truck&&lane===2&&!forced)||(this.signalAt(c.x,lane).mode!=='open'&&!escape))return false;
-          if(!escape&&GANTRIES.some((x,g)=>x>c.x&&x-c.x<650&&this.signals[g][lane].mode!=='open'))return false;
-          const ahead = this.obstacle(c, lane, this.cars);
+          if(lane<0||lane>2)return false;
+          const routeStep=forced&&evacuationSteps.includes(lane),escape=routeStep&&(mandatory||boundaryTransition);
+          const laneMode=this.signalAt(c.x,lane).mode;
+          if(lane<0||lane>2||(!escape&&this.laneHazardAhead(c.x,lane))||(c.truck&&lane===2&&!forced)||(laneMode==='closed'&&!escape)||(laneMode.startsWith('merge')&&!routeStep))return false;
+          if(!escape&&GANTRIES.some((x,g)=>x>c.x&&x-c.x<650&&this.signals[g][lane].mode==='closed'))return false;
+          let ahead = this.obstacle(c, lane, this.cars);
+          if(escape&&lane!==c.evacuationGoal&&boundaryTransition&&this.signals[upcoming][lane].mode==='closed'){
+            // A sideways crossing of an intermediate red-X lane still needs a
+            // real traffic gap, but its virtual stop line is not a vehicle.
+            let pos=LENGTH+1000,speed=c.desired;
+            for(const o of this.cars)if(o.id!==c.id&&this.occupiedLanes(o).includes(lane)&&o.x>=c.x&&o.x-o.length<pos){pos=o.x-o.length;speed=o.v;}
+            for(const i of this.incidentBodies())if(i.lane===lane&&i.x>=c.x&&i.x-i.length<pos){pos=i.x-i.length;speed=0;}
+            ahead={gap:Math.max(.1,pos-c.x),speed};
+          }
           let behind=null;
           for(const o of this.cars)if(o.id!==c.id&&(o.lane===lane||Math.abs(o.visualLane-o.lane)>.2&&o.fromLane===lane)&&o.x<c.x&&(!behind||o.x>behind.x))behind=o;
           const rearGap = behind ? c.x - c.length - behind.x : 1000;
@@ -401,6 +454,7 @@ export class Simulation {
       if(c.onRamp!=null){const ramp=this.systems.ramps[c.onRamp],join=ramp.x;c.rampProgress=Math.max(0,Math.min(1,(c.x-(join-ramp.mergeLength))/ramp.mergeLength));if(c.x>=join){c.onRamp=null;c.slipRamp=null;}}
       if(c.recovering!=null){c.v=0;continue;}
       if(c.lane<0){
+        if(c.kind==='recovery'&&c.recoveryTarget==null){c.v=0;c.a=0;continue;}
         const front=this.obstacle(c,c.lane,movementSnapshot);
         c.v=Math.min(c.desired,c.v+c.acceleration*dt);
         const berth=this.incidents.find(i=>i.id===c.recoveryTarget);

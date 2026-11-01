@@ -62,7 +62,8 @@ function overviewFrame(cars,incidents=[],width=320,ramps=[]){
 function centred(sprites,g,ramps=[]){
  for(const c of sprites){
   const ramp=c.onRamp??c.slipRamp;
-  const expected=ramp!=null?slipRoadPoint(g,ramps[ramp],c.x).x:g.laneX(c.x,c.lane<0?-1:c.visualLane);
+  const shoulderRejoin=c.lane>=0&&c.fromLane<0&&c.visualLane<0;
+  const expected=ramp!=null?slipRoadPoint(g,ramps[ramp],c.x).x:shoulderRejoin?g.laneX(c.x,-1)+(g.laneX(c.x,0)-g.laneX(c.x,-1))*(c.visualLane+1):g.laneX(c.x,c.lane<0?-1:c.visualLane);
   assert.equal(c.cx,expected,'icon moved beside its actual lane position');
   assert.equal(c.cy,g.project(c.x));assert.equal(c.packedOffset,0);
  }
@@ -74,9 +75,9 @@ test('full-network overview draws every vehicle on its actual lane centre withou
  const {g,opts}=overviewFrame(cars,incidents),overview=layoutSprites(cars,incidents,opts);
  paintedApart(overview);centred(overview,g);
  assert.equal(overview.length,61+incidents.length);assert(overview.some(c=>c.static));assert(overview.some(c=>c.emergency));
- assert(overview.every(c=>c.height===c.nominalHeight));assert(overview.filter(c=>!c.emergency).every(c=>Math.abs(c.height-4.7*.0988*.68)<1e-8));
+ assert(overview.every(c=>c.height===c.nominalHeight));assert(overview.filter(c=>!c.emergency).every(c=>Math.abs(c.height-4.7*.0988*.90)<1e-8));
 });
-test('full-network overview keeps very small traffic glyphs while Detail retains vehicle artwork',()=>{
+test('full-network overview improves visible footprint while Detail retains vehicle artwork',()=>{
  const cars=[{id:1,x:1000,lane:0,visualLane:0},{id:2,x:1300,lane:1,visualLane:1,truck:true},{id:3,x:1600,lane:2,visualLane:2,kind:'ambulance'},{id:4,x:2000,lane:2,visualLane:2,kind:'police'},{id:5,x:2500,lane:-1,visualLane:-1,kind:'recovery'}];
  const detail=layoutSprites(cars,[],options),overview=layoutSprites(cars,[],{...options,project:x=>550-x*.085,overview:true});
  for(const c of overview){const d=detail.find(x=>x.id===c.id);assert.deepEqual([c.designWidth,c.designHeight],[d.width,d.height]);assert(c.width<d.width&&c.height<d.height);assert.equal(c.cy,550-c.x*.085);}
@@ -137,11 +138,11 @@ test('lane-change heading turns right or left and unwinds with eased lateral vel
   assert.equal(samples[0].angle,0);assert.equal(samples.at(-1).angle,0);
   assert(samples.slice(1,-1).every(c=>Math.sign(c.angle)===direction));
   assert(Math.abs(samples[3].angle)>Math.abs(samples[1].angle));
-  assert(samples.every(c=>Math.abs(c.angle)<=(overview?.22:.30)));
+  assert(samples.every(c=>Math.abs(c.angle)<=(overview?.025:.30)));
   assert(samples.every(c=>c.width===samples[0].width&&c.height===samples[0].height));
  }
  const truck=layoutSprites([{...car,truck:true,laneChangeRate:2}],[],{...options,angleAt:()=>0,overview:true})[0];
- assert(truck.angle<=.16);
+ assert(truck.angle<=.025);
 });
 test('stopped scenes, shoulder vehicles and slip roads add no lane-change yaw',()=>{
  const cars=Array.from({length:12},(_,id)=>({id,x:2000+id*6.7,lane:0,visualLane:0,v:0,length:4.7,laneChangeRate:0}));
@@ -189,5 +190,38 @@ test('overview sizes stay fixed through traffic changes and keep the full 10 km 
   for(const c of next)if(sizes.has(c.id))assert.deepEqual([c.width,c.height],sizes.get(c.id));
   assert.deepEqual([450,1550,2650,3750,4850,6450,8050].map(x=>[nextFrame.g.center(x),nextFrame.g.project(x)]),landmarks);
   assert.equal(nextFrame.g.height,940);assert.equal(nextFrame.g.project(0),964);assert.equal(nextFrame.g.project(10000),-24);
+ }
+});
+
+
+test('overview marks have a larger visible footprint without lifting the physical road scale',()=>{
+ const cars=[
+  {id:1,x:4000,lane:0,visualLane:0,length:4.7},
+  {id:2,x:4100,lane:1,visualLane:1,length:16.5,truck:true},
+  {id:3,x:4200,lane:2,visualLane:2,length:7,kind:'ambulance',emergency:true},
+ ];
+ const {opts}=overviewFrame(cars),sprites=layoutSprites(cars,[],opts),scale=.0988;
+ for(const c of sprites){
+  const oldWidth=c.truck?1.6:c.emergency?1.4:1.2,oldArea=oldWidth*c.length*scale*.68;
+  assert(c.width*c.height>oldArea*2.5,'overview footprint did not visibly increase');
+  assert(c.height<=c.length*scale,'overview body exceeded fixed physical footprint');
+ }
+ const turning=layoutSprites(cars.map(c=>({...c,laneChangeRate:.42})),[],opts);
+ for(const c of turning){assert(Math.abs(c.angle)<=.025);const before=sprites.find(s=>s.id===c.id);assert.deepEqual([c.width,c.height],[before.width,before.height]);}
+});
+
+
+test('a recovery truck steers continuously from the shoulder into the running lane',()=>{
+ for(const overview of [false,true]){
+  const g=createRoadGeometry(390,940,10000),opts={left:g.leftAt(0),laneWidth:g.laneWidth,project:g.project,laneX:g.laneX,angleAt:()=>0,overview};
+  const x=4000,shoulder=g.laneX(x,-1),lane=g.laneX(x,0);let previous=shoulder;
+  for(let n=0;n<=100;n++){
+   const progress=n/100,c={id:1,x,lane:0,fromLane:-1,visualLane:-1+progress,kind:'recovery',length:16,laneChangeRate:n===0||n===100?0:.3};
+   const sprite=layoutSprites([c],[],opts)[0];
+   assert(Math.abs(sprite.cx-(shoulder+(lane-shoulder)*progress))<1e-8);
+   assert(sprite.cx>=previous-1e-8&&sprite.cx-previous<.5);previous=sprite.cx;
+   assert.equal(sprite.cy,g.project(x));assert(sprite.angle>=0);
+  }
+  assert.equal(previous,lane);
  }
 });
