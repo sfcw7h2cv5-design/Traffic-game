@@ -11,6 +11,7 @@ export class Simulation {
     this.nextArrival = 1 + random() * 3;
     this.nextIncident = 35 + random() * 30;
     this.eventId = 0; this.lastEvent = '';
+    this.incidentZones=[];
     this.incidentId = 0; this.nextEmergency = 20 + random() * 25;
     // Stagger each lane independently; most traffic starts in the running lane.
     for (let lane = 0; lane < 3; lane++) {
@@ -74,13 +75,35 @@ export class Simulation {
     }
     return { gap: Math.max(.1, pos - car.x), speed };
   }
-  addIncident(lane = 0, x = 2200, type = 'breakdown') {
-    if(this.incidents.some(i=>i.lane===(type==='breakdown'?0:lane)&&Math.abs(i.x-x)<150))return null;
+  incidentWindows(){
+    return GANTRIES.map((g,i)=>({start:g+350,end:Math.min(LENGTH-150,(GANTRIES[i+1]??LENGTH+250)-350)}));
+  }
+  incidentPositionAllowed(x){
+    return x>=150&&x<=LENGTH-150&&GANTRIES.every(g=>Math.abs(x-g)>=350)&&this.incidents.every(i=>Math.abs(x-i.x)>=600);
+  }
+  nextIncidentPosition(){
+    if(!this.incidentZones.length){
+      this.incidentZones=GANTRIES.map((_,i)=>i);
+      for(let i=this.incidentZones.length-1;i>0;i--){const j=Math.floor(this.random()*(i+1));[this.incidentZones[i],this.incidentZones[j]]=[this.incidentZones[j],this.incidentZones[i]];}
+    }
+    const windows=this.incidentWindows();
+    while(this.incidentZones.length){
+      const w=windows[this.incidentZones.pop()];const x=w.start+10+this.random()*(w.end-w.start-20);
+      if(this.incidentPositionAllowed(x))return x;
+    }
+    return null;
+  }
+  addIncident(lane = 0, x = 2200, type = 'breakdown', options = {}) {
+    if(!this.incidentPositionAllowed(x)){
+      const options=this.incidentWindows().map(w=>clamp(x,w.start+10,w.end-10)).filter(x=>this.incidentPositionAllowed(x)).sort((a,b)=>Math.abs(a-x)-Math.abs(b-x));
+      if(!options.length)return null;x=options[0];
+    }
     if (type === 'breakdown') lane = 0;
     // Use an actual vehicle where possible, preserving its position and appearance.
-    const vehicle = this.cars.filter(c => c.lane === lane && c.x > 900 && c.x < LENGTH - 600 && c.v > 10 && !c.kind && !this.incidents.some(i=>i.lane===lane&&Math.abs(i.x-c.x)<80))
+    const vehicle = this.cars.filter(c => c.lane === lane && c.v > 10 && !c.kind && Math.abs(c.visualLane-c.lane)<.02 && Math.abs(c.x-x)<350 && this.incidentPositionAllowed(c.x))
       .sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
-    if(!vehicle&&this.cars.some(c=>c.lane===lane&&Math.abs(c.x-x)<40))return null;
+    if(options.requireVehicle&&!vehicle)return null;
+    if(!vehicle&&this.cars.some(c=>this.occupiedLanes(c).includes(lane)&&Math.abs(c.x-x)<40))return null;
     const incident = { id: this.incidentId++, vehicleId: vehicle?.id, lane, x: vehicle?.x ?? x, type, truck: vehicle?.truck ?? false,
       length: vehicle?.length ?? 4.7, started: this.elapsed,
       status: type==='breakdown'?'awaiting-recovery':'crews-working', dispatchAt: this.elapsed+5+this.random()*5,
@@ -124,7 +147,9 @@ export class Simulation {
   dispatchRecovery(incident) {
     if(!incident||incident.type!=='breakdown'||incident.status!=='awaiting-recovery')return false;
     // Recovery joins via the left hard shoulder, which is separate from traffic.
-    const tow=this.spawn(-1,Math.max(0,incident.x-1000),20,'recovery');
+    let entry=0;const length=11+incident.length;
+    for(let pass=0;pass<=this.cars.length;pass++){const occupied=this.cars.find(c=>c.lane===-1&&entry>c.x-c.length-2&&entry-length<c.x+2);if(!occupied)break;entry=occupied.x-occupied.length-2;}
+    const tow=this.spawn(-1,entry,20,'recovery');
     tow.length+=incident.length;
     tow.recoveryTarget=incident.id;incident.status='recovery-en-route';
     this.lastEvent=`Recovery truck dispatched · Lane 1 · ${(incident.x/1000).toFixed(2)} km.`;this.eventId++;
@@ -163,7 +188,8 @@ export class Simulation {
       if (this.incidents.length < 3) {
         const roll = this.random();
         const type = roll < .65 ? 'breakdown' : roll < .85 ? 'debris' : 'collision';
-        this.addIncident(type === 'breakdown' ? 0 : Math.floor(this.random() * 3), 1000 + this.random() * (LENGTH - 1800), type);
+        const position=this.nextIncidentPosition();
+        if(position!=null)this.addIncident(type === 'breakdown' ? 0 : Math.floor(this.random() * 3),position,type,{requireVehicle:type!=='debris'});
       }
       this.nextIncident = this.elapsed + 110 + this.random() * 130;
     }
@@ -176,7 +202,7 @@ export class Simulation {
     // Entries prefer the left. Overflow can join lane 2 in heavier traffic.
     for (const lane of this.waiting > 4 ? [0, 1] : [0]) {
       if (!this.waiting || this.signalAt(0, lane).mode !== 'open') continue;
-      const front = this.cars.filter(c => c.lane === lane).sort((a, b) => a.x - b.x)[0];
+      const front = this.cars.filter(c => this.occupiedLanes(c).includes(lane)).sort((a, b) => a.x - b.x)[0];
       if (!front || front.x - front.length > Math.max(45, front.v * 2.5)) {
         this.spawn(lane, 0, front ? Math.min(22, front.v) : 23); this.waiting--;
       }

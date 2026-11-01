@@ -172,3 +172,37 @@ test('keep-left drivers do not return into a lane that is closing ahead',()=>{
  const c=s.spawn(1,1400,5);c.truck=false;c.cooldown=0;c.decision=0;
  s.signals[1][0].mode='closed';run(s,2);assert.equal(c.lane,1);
 });
+
+test('random incidents rotate across the network and keep clear of gantries',()=>{
+ for(const seed of [42,77,192]){
+  const s=new Simulation(seeded(seed));quiet(s);s.cars=[];s.incidents=[];
+  const zones=new Set();
+  for(let n=0;n<5;n++){
+   const position=s.nextIncidentPosition();assert(position!=null);
+   const incident=s.addIncident(0,position,'breakdown');assert(incident);
+   assert(GANTRIES.every(g=>Math.abs(incident.x-g)>=350));
+   zones.add(GANTRIES.findLastIndex(g=>incident.x>g));s.incidents=[];
+  }
+  assert.equal(zones.size,5);
+ }
+});
+test('active incidents stay separated across lanes and target locations',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];s.incidents=[];
+ for(const position of [1550,1600,1650])s.addIncident(1,position,'collision');
+ assert(s.incidents.length>=2);
+ for(const i of s.incidents){assert(GANTRIES.every(g=>Math.abs(i.x-g)>=350));for(const j of s.incidents)if(i!==j)assert(Math.abs(i.x-j.x)>=600);}
+});
+
+test('entry waits while a merging vehicle still occupies the source lane',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(2,10,10);c.fromLane=1;c.visualLane=1.2;c.cooldown=100;
+ s.waiting=5;s.signals.forEach(g=>g[0].mode='closed');
+ s.step(.1);assert.equal(s.cars.filter(o=>o.id!==c.id&&o.lane===1).length,0);assert(c.x>=10);
+});
+test('automatic breakdowns convert real settled vehicles rather than materialising mid-road',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ assert.equal(s.addIncident(0,2200,'breakdown',{requireVehicle:true}),null);
+ const c=s.spawn(0,2200,20);const incident=s.addIncident(0,2200,'breakdown',{requireVehicle:true});
+ assert(incident);assert.equal(incident.vehicleId,c.id);assert.equal(incident.x,c.x);assert(!s.cars.includes(c));
+ s.dispatchRecovery(incident);const tow=s.cars.find(c=>c.kind==='recovery');assert(tow.x<=0);
+});

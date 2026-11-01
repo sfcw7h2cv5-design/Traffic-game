@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {layoutSprites,createSpriteLayout,queueBands} from './display.js';
+import {layoutSprites,createSpriteLayout} from './display.js';
 const options={left:90,laneWidth:55,project:x=>600-(x-1350)*1.41};
 function separated(sprites){
  for(let a=0;a<sprites.length;a++)for(let b=a+1;b<sprites.length;b++){
@@ -54,13 +54,13 @@ test('visible lane positions follow the model through crowded closure merges',as
  assert(changes>5);
 });
 
-test('full-network overview keeps fixed symbols separate and preserves incident priority',()=>{
+test('full-network overview draws every vehicle without density-dependent resizing',()=>{
  const cars=Array.from({length:60},(_,id)=>({id,x:2000+id*8,lane:0,visualLane:0,v:0,length:4.7}));
  cars.push({id:100,x:1900,lane:2,visualLane:2,emergency:true,kind:'police',v:35,length:4.7});
  const incidents=[{id:1,x:2550,lane:0,type:'breakdown',length:4.7}];
  const overview=layoutSprites(cars,incidents,{left:90,laneWidth:55,project:x=>550-x*.085,overview:true});
  const visible=overview.filter(c=>c.visible);separated(visible);
- assert(visible.length<overview.length);assert(visible.some(c=>c.static));assert(visible.some(c=>c.emergency));
+ assert.equal(visible.length,overview.length);assert(visible.some(c=>c.static));assert(visible.some(c=>c.emergency));
  assert(overview.every(c=>c.height===c.nominalHeight));assert.equal(overview.length,61+incidents.length);
- const bands=queueBands(cars);assert.equal(bands.length,1);assert.equal(bands[0].count,60);
+
 });
