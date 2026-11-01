@@ -1,5 +1,5 @@
-export const LENGTH = 3600;
-export const GANTRIES = [450, 1650, 2850];
+export const LENGTH = 6000;
+export const GANTRIES = [450, 1550, 2650, 3750, 4850];
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
 export class Simulation {
@@ -38,8 +38,20 @@ export class Simulation {
   }
   signalAt(x, lane) {
     let i = -1;
-    for (let j = 0; j < 3; j++) if (x >= GANTRIES[j]) i = j;
+    for (let j = 0; j < GANTRIES.length; j++) if (x >= GANTRIES[j]) i = j;
     return i < 0 ? { speed: 70, mode: 'open' } : this.signals[i][lane];
+  }
+  speedTarget(car) {
+    // A lower limit affects its whole downstream section. Drivers also see
+    // approaching signs and brake comfortably before passing the gantry.
+    let target = this.signalAt(car.x, car.lane).speed * .44704;
+    const next = GANTRIES.findIndex(x => x > car.x);
+    if (next >= 0 && GANTRIES[next] - car.x < 400) {
+      const posted = this.signals[next][car.lane].speed * .44704;
+      const distance = Math.max(0, GANTRIES[next] - car.x - 15);
+      target = Math.min(target, Math.sqrt(posted * posted + 2 * 1.5 * distance));
+    }
+    return target;
   }
   obstacle(car, lane, traffic = this.cars) {
     let pos = LENGTH + 1000, speed = car.desired;
@@ -52,7 +64,7 @@ export class Simulation {
     for (const i of this.incidents) if (i.lane === lane && i.x >= car.x && i.x - i.length < pos) {
       pos = i.x - i.length; speed = 0;
     }
-    for (let g = 0; g < 3; g++) if (this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
+    for (let g = 0; g < GANTRIES.length; g++) if (this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
       pos = Math.max(car.x, GANTRIES[g] - 8); speed = 0;
     }
     return { gap: Math.max(.1, pos - car.x), speed };
@@ -60,10 +72,11 @@ export class Simulation {
   addIncident(lane = 0, x = 2200, type = 'breakdown') {
     if (type === 'breakdown') lane = 0;
     // Use an actual vehicle where possible, preserving its position and appearance.
-    const vehicle = this.cars.filter(c => c.lane === lane && c.x > 900 && c.x < 3000 && c.v > 10)
+    const vehicle = this.cars.filter(c => c.lane === lane && c.x > 900 && c.x < LENGTH - 600 && c.v > 10)
       .sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
     const incident = { lane, x: vehicle?.x ?? x, type, truck: vehicle?.truck ?? false,
-      length: vehicle?.length ?? 4.7, started: this.elapsed };
+      length: vehicle?.length ?? 4.7, started: this.elapsed,
+      clearsAt: this.elapsed + ({ breakdown: 100, debris: 50, collision: 150 }[type] ?? 100) + this.random() * 40 };
     if (vehicle) this.cars = this.cars.filter(c => c.id !== vehicle.id);
     this.incidents.push(incident);
     this.lastEvent = `${type === 'breakdown' ? 'Broken-down ' + (incident.truck ? 'HGV' : 'car') : type === 'debris' ? 'Debris reported' : 'Collision reported'} · Lane ${lane + 1} · ${(incident.x / 1000).toFixed(2)} km. Set upstream warnings.`;
@@ -72,11 +85,17 @@ export class Simulation {
   }
   step(dt) {
     this.elapsed += dt;
+    const cleared = this.incidents.filter(i => i.clearsAt <= this.elapsed);
+    if (cleared.length) {
+      this.incidents = this.incidents.filter(i => !(i.clearsAt <= this.elapsed));
+      this.lastEvent = `Recovery complete · ${cleared.length} incident${cleared.length > 1 ? 's' : ''} cleared automatically. Check your signals and reopen lanes when safe.`;
+      this.eventId++;
+    }
     if (this.elapsed >= this.nextIncident) {
       if (this.incidents.length < 3) {
         const roll = this.random();
         const type = roll < .65 ? 'breakdown' : roll < .85 ? 'debris' : 'collision';
-        this.addIncident(type === 'breakdown' ? 0 : Math.floor(this.random() * 3), 1300 + this.random() * 1500, type);
+        this.addIncident(type === 'breakdown' ? 0 : Math.floor(this.random() * 3), 1000 + this.random() * (LENGTH - 1800), type);
       }
       this.nextIncident = this.elapsed + 110 + this.random() * 130;
     }
@@ -142,7 +161,7 @@ export class Simulation {
         if (oldFront.gap < front.gap) front = oldFront;
       }
       const unruly = this.scenario === 'reckless' && c.reckless;
-      const limit = this.signalAt(c.x, c.lane).speed * .44704;
+      const limit = this.speedTarget(c);
       const desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
       const headway = c.headway * (rain ? 1.35 : unruly ? .65 : 1);
       const closing = c.v - front.speed;
