@@ -1,20 +1,17 @@
 // One projection is shared by the carriageway, vehicles and touch targets.
-export function createRoadGeometry(width,height,length,viewLength=length,viewStart=0,networkProjection=null){
+export function createRoadGeometry(width,height,length,viewLength=length,viewStart=0){
  const roadWidth=Math.min(width*.28,172),laneWidth=roadWidth/3;
  const amplitude=Math.min(width*.12,65);
- const networkBottom=networkProjection?.project(0),networkExtent=networkProjection?networkBottom-networkProjection.project(length):0;
- const fraction=x=>networkProjection?(networkBottom-networkProjection.project(x))/networkExtent:x/length;
- const centerFromFraction=t=>width/2+amplitude*(.75*Math.sin(t*Math.PI*2-.7)+.25*Math.sin(t*Math.PI*4+.4));
- const center=x=>centerFromFraction(fraction(x));
+ const center=x=>width/2+amplitude*(.75*Math.sin(x/length*Math.PI*2-.7)+.25*Math.sin(x/length*Math.PI*4+.4));
  const leftAt=x=>center(x)-roadWidth/2;
  const overview=viewLength===length;
  const top=overview?-24:30,bottom=overview?height+24:height-46,scale=(bottom-top)/viewLength;
- const project=overview&&networkProjection?networkProjection.project:x=>bottom-(x-viewStart)*scale;
- const unproject=overview&&networkProjection?networkProjection.unproject:y=>viewStart+(bottom-y)/scale;
- const scaleAt=overview&&networkProjection?networkProjection.scaleAt:()=>scale;
- const centerAtY=y=>overview?centerFromFraction(networkProjection?(networkBottom-y)/networkExtent:(bottom-y)/(bottom-top)):center(unproject(y));
+ const project=x=>bottom-(x-viewStart)*scale;
+ const unproject=y=>viewStart+(bottom-y)/scale;
+ const scaleAt=()=>scale;
+ const centerAtY=y=>center(unproject(y));
  const laneX=(x,lane)=>leftAt(x)+(lane<0?-10:(lane+.5)*laneWidth);
- const angleAt=x=>Math.atan2(center(x+1)-center(x-1),2*scaleAt(x));
+ const angleAt=x=>Math.atan2(center(x+1)-center(x-1),2*scale);
  return {width,height,roadWidth,laneWidth,leftAt,center,centerAtY,project,unproject,scale,scaleAt,laneX,angleAt};
 }
 

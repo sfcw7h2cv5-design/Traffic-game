@@ -1,12 +1,15 @@
 // Every icon stays on its actual lane centre (or the shared slip-road curve).
-// Overview artwork is compact and fixed-size; spacing belongs to the road projection.
+// The full network uses much smaller glyphs at one fixed road scale. Their size
+// never depends on nearby traffic; Detail keeps the larger vehicle artwork.
 export function layoutSprites(cars,incidents,{left,laneWidth,project,laneX,angleAt,rampPosition,overview=false}){
- const sprites=[];
+ const sprites=[],roadScale=Math.abs(project(1)-project(0));
  function append(c,staticBody=false){
   const designWidth=c.kind==='ambulance'?7:c.kind==='recovery'||c.truck?8:5;
   const designHeight=c.towing||c.kind==='recovery'?20:c.truck?13:c.kind==='ambulance'?10:6;
-  const width=overview?(c.kind==='ambulance'?3:c.kind==='recovery'||c.truck?3.5:c.emergency||c.blocker?3:2.5):designWidth;
-  const height=overview?(c.towing||c.kind==='recovery'?7:c.truck?6:c.kind==='ambulance'?4.5:c.emergency||c.blocker?4:3):designHeight;
+  const width=overview?(c.kind==='recovery'||c.truck?1.6:c.kind==='ambulance'||c.kind==='police'||c.kind==='roadblock'||c.emergency||c.blocker?1.4:1.2):designWidth;
+  const physicalLength=c.length??(c.kind==='recovery'?11:c.kind==='ambulance'?7:c.truck?16.5:4.7);
+  const compactHeight=c.towing||c.kind==='recovery'?7:c.truck?6:c.kind==='ambulance'?4.5:c.emergency||c.blocker?4:3;
+  const height=overview?Math.min(compactHeight,physicalLength*roadScale*.68):designHeight;
   const slip=(c.onRamp!=null||c.slipRamp!=null)&&rampPosition?rampPosition(c):null;
   const cx=slip?slip.x:(laneX?laneX(c.x,c.lane<0?-1:c.visualLane):c.lane<0?left-10:left+(c.visualLane+.5)*laneWidth);
   const heading=slip?.angle??(angleAt?angleAt(c.x):0);

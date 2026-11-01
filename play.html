@@ -44,7 +44,7 @@ canvas{height:1160px}.road-sign-target.gantry-side{font-size:9px}#inlineSignals{
 <aside>
 <section class="scenario"><div class="eyebrow">TRAFFIC DESK</div><h2>Manage the approach.</h2><p id="trafficAdvice" role="status">Reading the motorway…</p><button id="applyAdvice" hidden>Set suggested approach limits</button><div class="desk-metrics"><div><label>STOPPED VEHICLES</label><strong id="stoppedCount">0</strong></div><div><label>HARD BRAKES / MIN</label><strong id="brakingCount">0</strong></div></div><p class="strategy-note">Lower limits before a queue can smooth arrivals and reduce sudden braking. Watch flow and stopped vehicles: setting limits too low can reduce throughput.</p><div class="scenarioactions"><span class="auto-incidents">● Random incidents · automatic recovery</span></div><div id="event" role="status">Control desk ready. Random incidents are active.</div></section><details class="operations"><summary>Network operations</summary><div class="operations-body"><h3>Junction slip roads</h3><div id="rampsList"></div><h3>Scheduled roadworks</h3><p id="workReading"></p><button id="protectWorks">Prepare work-zone signals</button><h3>Police rolling hold</h3><p id="policeReading"></p><p class="strategy-note">A police convoy slows every lane while a debris team works, then releases traffic automatically.</p></div></details><details class="objectives"><summary>Optional shift goals <span id="objectiveCount">0/4</span></summary><p>Keep experimenting. Goals never end the simulation or create a losing condition.</p><div id="objectiveList"></div></details></aside></div>
 <footer><span>DESIGNED FOR FLOW, NOT FAILURE.</span><span>Keep left · Overtake right · Live lane control</span></footer></main>
-<dialog id="guide"><button id="closeHelp" class="close" aria-label="Close guide">×</button><div class="eyebrow">WELCOME TO THE CONTROL CENTRE</div><h2>A calmer road starts upstream.</h2><p>Vehicles travel upwards through seven gantries along 10 km of motorway. The full motorway and all seven gantries are visible together. Incidents have orange rings and labelled callouts between gantries. Cars stay single file. The overview gives queues extra space and compresses clear stretches; vehicle icons keep a fixed size. Tap Detail, then choose a gantry or point on the road to inspect. Use Upstream/Downstream to move the close-up; Show all returns to the network. Tap an individual overhead sign to edit that lane directly on the road. Tap the gantry’s side label to set all three lanes. Tap elsewhere on the road to dismiss the controls. Changes apply immediately.</p><p><b>↖ / ↗ Merge:</b> asks drivers to leave a lane. <b>× Closed:</b> vehicles merge or stop before the controlled section. Speed limits show mph.</p><p>For an incident, use a merge arrow at the gantry before it, then close the affected lane. Use the traffic desk to spot an approaching queue. Lower limits at the gantry before its tail to smooth arrivals, and watch hard braking, stopped vehicles and network flow. Suggested limits require your tap and never alter lane closures. Random incidents arrive at the traffic desk. Breakdowns always block the left lane; look for a stopped vehicle with flashing hazards. A recovery truck must reach each breakdown and load the vehicle before the lane clears. Recovery is dispatched automatically, and loading takes only a few seconds. Shed loads and pile-ups can block two lanes at once. Set arrows and closures upstream of both lanes; the crew clears the scene automatically. Debris and collisions take longer to clear. Reopen your signals once the obstruction is gone.</p><p>Flow counts vehicles leaving the motorway over the last simulated minute. Demand, headways, braking, lane changes, HGVs and imperfect compliance shape the result. This is an illustrative model, not an engineering prediction.</p><p>Police and ambulances target up to 110 and 100 mph respectively on clear roads; traffic yields when safe. Tap Sound on to hear sirens. Recovery uses the hard shoulder.</p><p>Tap J1–J3 for slip-road controls. Roads are normally Open; Closed holds traffic for an emergency. Drivers join lane 1 when a safe gap opens. Demand surges arrive automatically. Prepare roadwork closures before crews enter, and reopen them after completion. Police rolling holds create a debris-clearance gap, then release themselves. Network operations and optional shift goals are below the traffic desk.</p><p>There is no losing. Pause, experiment, and find a rhythm.</p><button id="begin">Take control →</button></dialog><script>// Scheduled network operations share the same individual-vehicle traffic model.
+<dialog id="guide"><button id="closeHelp" class="close" aria-label="Close guide">×</button><div class="eyebrow">WELCOME TO THE CONTROL CENTRE</div><h2>A calmer road starts upstream.</h2><p>Vehicles travel upwards through seven gantries along 10 km of motorway. The full motorway and all seven gantries are visible together. Incidents have orange rings and labelled callouts between gantries. The overview keeps the road and gantries fixed. Vehicles are much smaller so the full 10 km can stay in view; Detail shows larger vehicle icons. Tap Detail, then choose a gantry or point on the road to inspect. Use Upstream/Downstream to move the close-up; Show all returns to the network. Tap an individual overhead sign to edit that lane directly on the road. Tap the gantry’s side label to set all three lanes. Tap elsewhere on the road to dismiss the controls. Changes apply immediately.</p><p><b>↖ / ↗ Merge:</b> asks drivers to leave a lane. <b>× Closed:</b> vehicles merge or stop before the controlled section. Speed limits show mph.</p><p>For an incident, use a merge arrow at the gantry before it, then close the affected lane. Use the traffic desk to spot an approaching queue. Lower limits at the gantry before its tail to smooth arrivals, and watch hard braking, stopped vehicles and network flow. Suggested limits require your tap and never alter lane closures. Random incidents arrive at the traffic desk. Breakdowns always block the left lane; look for a stopped vehicle with flashing hazards. A recovery truck must reach each breakdown and load the vehicle before the lane clears. Recovery is dispatched automatically, and loading takes only a few seconds. Shed loads and pile-ups can block two lanes at once. Set arrows and closures upstream of both lanes; the crew clears the scene automatically. Debris and collisions take longer to clear. Reopen your signals once the obstruction is gone.</p><p>Flow counts vehicles leaving the motorway over the last simulated minute. Demand, headways, braking, lane changes, HGVs and imperfect compliance shape the result. This is an illustrative model, not an engineering prediction.</p><p>Police and ambulances target up to 110 and 100 mph respectively on clear roads; traffic yields when safe. Tap Sound on to hear sirens. Recovery uses the hard shoulder.</p><p>Tap J1–J3 for slip-road controls. Roads are normally Open; Closed holds traffic for an emergency. Drivers join lane 1 when a safe gap opens. Demand surges arrive automatically. Prepare roadwork closures before crews enter, and reopen them after completion. Police rolling holds create a debris-clearance gap, then release themselves. Network operations and optional shift goals are below the traffic desk.</p><p>There is no losing. Pause, experiment, and find a rhythm.</p><button id="begin">Take control →</button></dialog><script>// Scheduled network operations share the same individual-vehicle traffic model.
 class NetworkSystems {
  constructor(sim,{length,gantries}){
   this.sim=sim;this.length=length;this.gantries=gantries;
@@ -676,122 +676,20 @@ class Simulation {
   }
 }
 
-// One longitudinal projection keeps icons, gantries, incidents and road geometry
-// aligned. Congested intervals gain room; unused road intervals compress.
-function defaultIconHeight(c){
- return c.towing||c.kind==='recovery'?7:c.truck?6:c.kind==='ambulance'?4.5:c.emergency||c.blocker?4:3;
-}
-function lowerBound(values,value){
- let low=0,high=values.length;
- while(low<high){const mid=(low+high)>>>1;if(values[mid]<value)low=mid+1;else high=mid;}
- return low;
-}
-function createNetworkProjection(cars,incidents,{length=10000,height=940,iconHeight=defaultIconHeight,gap=.6,ramps=[],gantries=[],minGantrySpacing=45,minScale=.008,occupiedLanes}={}){
- const records=[],seen=new Set();
- function addCar(c,rampId=null){
-  const key=c.id==null?c:c.id;if(seen.has(key))return;seen.add(key);
-  const joining=c.onRamp!=null,slip=rampId??c.slipRamp;
-  let groups;
-  if(slip!=null&&!joining)groups=['ramp:'+slip];
-  else{
-   const lanes=occupiedLanes?occupiedLanes(c):Math.abs((c.visualLane??c.lane)-c.lane)>.2&&c.fromLane!=null?[c.lane,c.fromLane]:[c.lane];
-   groups=[...new Set(lanes)].map(l=>'lane:'+l);
-   if(joining)groups.push('ramp:'+c.onRamp);
-  }
-  records.push({x:c.x,extent:Math.max(0,iconHeight(c,false))+gap,groups,source:key});
- }
- for(const c of cars)addCar(c);
- for(const r of ramps)for(const c of r.queue??[])addCar(c,r.id);
- // Keep a visible acceleration lane even when empty motorway is compressed.
- for(const r of ramps){
-  const group=['join-geometry:'+r.id],merge=r.mergeLength??600,approach=r.approachLength??1100;
-  records.push({x:r.x-approach,extent:0,groups:group,source:'ramp-start:'+r.id});
-  records.push({x:r.x-merge,extent:40,groups:group,source:'ramp-entry:'+r.id});
-  records.push({x:r.x,extent:80,groups:group,source:'ramp-join:'+r.id});
- }
- for(const incident of incidents){
-  if(incident.type==='roadworks'||incident.type==='police-clearance')continue;
-  const bodies=incident.bodies??[incident];
-  for(let n=0;n<bodies.length;n++){
-   const c={...incident,...bodies[n],static:true};
-   records.push({x:c.x,extent:Math.max(0,iconHeight(c,true))+gap,groups:['lane:'+c.lane],source:'incident:'+incident.id+':'+n});
-  }
- }
- for(const x of gantries)records.push({x,extent:minGantrySpacing,groups:['gantries'],source:'gantry:'+x});
- if(gantries.length)for(const x of [0,length])records.push({x,extent:minGantrySpacing,groups:['gantries'],source:'boundary:'+x});
- // Out-of-network arrivals/exits are extrapolated through the boundary. They
- // must not consume extra space or move the network while still off screen.
- const visible=records.filter(r=>Number.isFinite(r.x)&&r.x>=0&&r.x<=length);
- const world=[...new Set([0,length,...visible.map(r=>r.x)])].sort((a,b)=>a-b);
- const byWorld=new Map(world.map((x,i)=>[x,i])),edges=world.map(()=>[]),lastByGroup=new Map(),conflicts=[];
- visible.sort((a,b)=>a.x-b.x);
- for(const r of visible){
-  const to=byWorld.get(r.x);
-  for(const group of r.groups){
-   const from=lastByGroup.get(group);
-   if(from!=null){
-    if(from===to)conflicts.push({group,x:r.x,source:r.source});
-    else edges[to].push({from,distance:r.extent});
-   }
-   lastByGroup.set(group,to);
-  }
- }
- const work=new Float64Array(world.length);
- function solve(baseScale){
-  work[0]=0;
-  for(let i=1;i<world.length;i++){
-   let value=work[i-1]+(world[i]-world[i-1])*baseScale;
-   const incoming=edges[i];
-   for(let j=0;j<incoming.length;j++){const edge=incoming[j];value=Math.max(value,work[edge.from]+edge.distance);}
-   work[i]=value;
-  }
-  return work;
- }
- const baseline=Math.max(1e-7,minScale),minimum=solve(baseline);
- const requiredHeight=Math.max(height,Math.ceil(minimum[minimum.length-1]-48));
- const available=requiredHeight+48;
- let low=Math.min(baseline,available/length),high=available/length;
- // Twelve short DAG passes find a feasible scale to about 1/4096 precision;
- // positive uniform residue below preserves every exact spacing constraint.
- for(let i=0;i<12;i++){const mid=(low+high)/2,d=solve(mid);if(d[d.length-1]<=available)low=mid;else high=mid;}
- const distance=solve(low),used=distance[distance.length-1];
- // Numerical residue is added uniformly, preserving every spacing constraint.
- const extra=Math.max(0,available-used);
- for(let i=0;i<distance.length;i++)distance[i]+=extra*world[i]/length;
- function section(x){return Math.max(1,Math.min(world.length-1,lowerBound(world,x)));}
- function forward(x){
-  const i=section(x),fraction=(x-world[i-1])/(world[i]-world[i-1]);
-  return distance[i-1]+fraction*(distance[i]-distance[i-1]);
- }
- function project(x){return requiredHeight+24-forward(x);}
- function unproject(y){
-  const value=requiredHeight+24-y,i=Math.max(1,Math.min(distance.length-1,lowerBound(distance,value)));
-  return world[i-1]+(value-distance[i-1])*(world[i]-world[i-1])/(distance[i]-distance[i-1]);
- }
- function scaleAt(x){const i=section(x);return (distance[i]-distance[i-1])/(world[i]-world[i-1]);}
- // Full precision prevents stale road caches from hiding small mapping changes.
- const key=requiredHeight+':'+world.map((x,i)=>x+','+distance[i]).join(';');
- return {project,unproject,scaleAt,scale:available/length,requiredHeight,key,conflicts,
-  knots:world.map((x,i)=>({x,y:requiredHeight+24-distance[i]}))};
-}
-
 // One projection is shared by the carriageway, vehicles and touch targets.
-function createRoadGeometry(width,height,length,viewLength=length,viewStart=0,networkProjection=null){
+function createRoadGeometry(width,height,length,viewLength=length,viewStart=0){
  const roadWidth=Math.min(width*.28,172),laneWidth=roadWidth/3;
  const amplitude=Math.min(width*.12,65);
- const networkBottom=networkProjection?.project(0),networkExtent=networkProjection?networkBottom-networkProjection.project(length):0;
- const fraction=x=>networkProjection?(networkBottom-networkProjection.project(x))/networkExtent:x/length;
- const centerFromFraction=t=>width/2+amplitude*(.75*Math.sin(t*Math.PI*2-.7)+.25*Math.sin(t*Math.PI*4+.4));
- const center=x=>centerFromFraction(fraction(x));
+ const center=x=>width/2+amplitude*(.75*Math.sin(x/length*Math.PI*2-.7)+.25*Math.sin(x/length*Math.PI*4+.4));
  const leftAt=x=>center(x)-roadWidth/2;
  const overview=viewLength===length;
  const top=overview?-24:30,bottom=overview?height+24:height-46,scale=(bottom-top)/viewLength;
- const project=overview&&networkProjection?networkProjection.project:x=>bottom-(x-viewStart)*scale;
- const unproject=overview&&networkProjection?networkProjection.unproject:y=>viewStart+(bottom-y)/scale;
- const scaleAt=overview&&networkProjection?networkProjection.scaleAt:()=>scale;
- const centerAtY=y=>overview?centerFromFraction(networkProjection?(networkBottom-y)/networkExtent:(bottom-y)/(bottom-top)):center(unproject(y));
+ const project=x=>bottom-(x-viewStart)*scale;
+ const unproject=y=>viewStart+(bottom-y)/scale;
+ const scaleAt=()=>scale;
+ const centerAtY=y=>center(unproject(y));
  const laneX=(x,lane)=>leftAt(x)+(lane<0?-10:(lane+.5)*laneWidth);
- const angleAt=x=>Math.atan2(center(x+1)-center(x-1),2*scaleAt(x));
+ const angleAt=x=>Math.atan2(center(x+1)-center(x-1),2*scale);
  return {width,height,roadWidth,laneWidth,leftAt,center,centerAtY,project,unproject,scale,scaleAt,laneX,angleAt};
 }
 
@@ -834,14 +732,17 @@ function roadworkCones(geometry,work){
 }
 
 // Every icon stays on its actual lane centre (or the shared slip-road curve).
-// Overview artwork is compact and fixed-size; spacing belongs to the road projection.
+// The full network uses much smaller glyphs at one fixed road scale. Their size
+// never depends on nearby traffic; Detail keeps the larger vehicle artwork.
 function layoutSprites(cars,incidents,{left,laneWidth,project,laneX,angleAt,rampPosition,overview=false}){
- const sprites=[];
+ const sprites=[],roadScale=Math.abs(project(1)-project(0));
  function append(c,staticBody=false){
   const designWidth=c.kind==='ambulance'?7:c.kind==='recovery'||c.truck?8:5;
   const designHeight=c.towing||c.kind==='recovery'?20:c.truck?13:c.kind==='ambulance'?10:6;
-  const width=overview?(c.kind==='ambulance'?3:c.kind==='recovery'||c.truck?3.5:c.emergency||c.blocker?3:2.5):designWidth;
-  const height=overview?(c.towing||c.kind==='recovery'?7:c.truck?6:c.kind==='ambulance'?4.5:c.emergency||c.blocker?4:3):designHeight;
+  const width=overview?(c.kind==='recovery'||c.truck?1.6:c.kind==='ambulance'||c.kind==='police'||c.kind==='roadblock'||c.emergency||c.blocker?1.4:1.2):designWidth;
+  const physicalLength=c.length??(c.kind==='recovery'?11:c.kind==='ambulance'?7:c.truck?16.5:4.7);
+  const compactHeight=c.towing||c.kind==='recovery'?7:c.truck?6:c.kind==='ambulance'?4.5:c.emergency||c.blocker?4:3;
+  const height=overview?Math.min(compactHeight,physicalLength*roadScale*.68):designHeight;
   const slip=(c.onRamp!=null||c.slipRamp!=null)&&rampPosition?rampPosition(c):null;
   const cx=slip?slip.x:(laneX?laneX(c.x,c.lane<0?-1:c.visualLane):c.lane<0?left-10:left+(c.visualLane+.5)*laneWidth);
   const heading=slip?.angle??(angleAt?angleAt(c.x):0);
@@ -873,32 +774,10 @@ function closeEditor(){editor.hidden=true;editorOpener?.setAttribute('aria-expan
 let activeRamp=null;
 function closeRamp(){activeRamp=null;$('#rampControls').hidden=true;}
 const operations=sim.systems;
-let cachedGeometry=null,geometryKey='',networkProjection=null,projectionSource='',projectionRevision=0,overviewHeight=0,viewportKey='';
-function updateProjection(){
- const baseHeight=innerWidth<=600?Math.max(940,Math.min(1200,innerHeight*1.25)):1160;
- const viewport=canvas.clientWidth+'/'+baseHeight;
- if(viewport!==viewportKey){viewportKey=viewport;overviewHeight=baseHeight;projectionSource='';}
- if(VIEW_LENGTH===LENGTH){
-  const source=[sim.elapsed,sim.cars.length,sim.incidents.length,...operations.ramps.map(r=>r.queue.length),canvas.clientWidth,baseHeight].join('/');
-  if(source!==projectionSource){
-   projectionSource=source;
-   const iconHeight=c=>(c.towing||c.kind==='recovery'?7:c.truck?6:c.kind==='ambulance'?4.5:c.emergency||c.blocker?4:3)+.6;
-   const options={length:LENGTH,height:Math.max(baseHeight,overviewHeight),iconHeight,gap:.6,ramps:operations.ramps,gantries:GANTRIES,minGantrySpacing:45};
-   let next=createNetworkProjection(sim.cars,sim.incidents,options);
-   if(next.requiredHeight>options.height){
-    // Grow in small blocks rather than reallocating an iPhone canvas for every
-    // extra pixel as a queue builds.
-    overviewHeight=Math.ceil(next.requiredHeight/128)*128;next=createNetworkProjection(sim.cars,sim.incidents,{...options,height:overviewHeight});
-   }
-   if(next.key!==networkProjection?.key){networkProjection=next;projectionRevision++;}
-  }
- }
- const height=VIEW_LENGTH===LENGTH?(networkProjection?.requiredHeight??baseHeight):baseHeight;
- if(canvas.style.height!==height+'px')canvas.style.height=height+'px';
-}
+let cachedGeometry=null,geometryKey='';
 function roadGeometry(){
- updateProjection();const w=canvas.clientWidth,h=canvas.clientHeight,key=[w,h,VIEW_LENGTH,viewStart,projectionRevision].join('/');
- if(key!==geometryKey){geometryKey=key;cachedGeometry=createRoadGeometry(w,h,LENGTH,VIEW_LENGTH,viewStart,networkProjection)}
+ const w=canvas.clientWidth,h=canvas.clientHeight,key=[w,h,VIEW_LENGTH,viewStart].join('/');
+ if(key!==geometryKey){geometryKey=key;cachedGeometry=createRoadGeometry(w,h,LENGTH,VIEW_LENGTH,viewStart)}
  return cachedGeometry;
 }
 function positionTargets(){const geo=roadGeometry();document.querySelectorAll('[data-gantry]').forEach(b=>{const lane=b.dataset.lane,x=GANTRIES[+b.dataset.gantry],left=geo.leftAt(x);b.style.left=(lane==='all'?left-51:left+(+lane)*geo.laneWidth)+'px';b.style.width=(lane==='all'?42:geo.laneWidth)+'px';const gy=geo.project(x);b.hidden=gy<20||gy>canvas.clientHeight-20;b.style.top=gy+'px'});if(!editor.hidden)positionEditor();positionJunctions()}
@@ -1003,7 +882,7 @@ function roadPath(ctx,geo,offset){
 }
 function paintScenery(ctx,geo){
  const {width:w,height:h,roadWidth:roadW,laneWidth:lw,project:y}=geo,dpr=Math.min(devicePixelRatio||1,2);
- const surfaceKey=[w,h,dpr,VIEW_LENGTH,viewStart,VIEW_LENGTH===LENGTH?0:projectionRevision].join('/');
+ const surfaceKey=[w,h,dpr,VIEW_LENGTH,viewStart].join('/');
  if(surfaceKey!==roadSurfaceKey){
   roadSurfaceKey=surfaceKey;roadSurface=document.createElement('canvas');roadSurface.width=Math.round(w*dpr);roadSurface.height=Math.round(h*dpr);
   const base=roadSurface.getContext('2d');base.setTransform(dpr,0,0,dpr,0,0);base.fillStyle='#1d3938';base.fillRect(0,0,w,h);
@@ -1120,7 +999,7 @@ function frame(now){
  }
  if(sim.eventId!==seenEvent){seenEvent=sim.eventId;notify(sim.lastEvent)}
  draw();
- if(now-lastDashboard>=200){updateDashboard();positionTargets();lastDashboard=now;}
+ if(now-lastDashboard>=200){updateDashboard();lastDashboard=now;}
  if(now-lastDeskUpdate>=500){updateTrafficDesk();updateOperations();lastDeskUpdate=now;}
  updateSiren();requestAnimationFrame(frame);
 }

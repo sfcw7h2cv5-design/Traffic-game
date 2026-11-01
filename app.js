@@ -1,7 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=23';
-import {createSpriteLayout} from './display.js?v=23';
-import {createRoadGeometry,slipRoadPoint,slipRoadEdges,roadworkCones} from './road.js?v=23';
-import {createNetworkProjection} from './projection.js?v=23';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=24';
+import {createSpriteLayout} from './display.js?v=24';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,roadworkCones} from './road.js?v=24';
 const placeSprites=createSpriteLayout();
 const elements=new Map(),$=s=>{if(!elements.has(s))elements.set(s,document.querySelector(s));return elements.get(s)},sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
@@ -12,32 +11,10 @@ function closeEditor(){editor.hidden=true;editorOpener?.setAttribute('aria-expan
 let activeRamp=null;
 function closeRamp(){activeRamp=null;$('#rampControls').hidden=true;}
 const operations=sim.systems;
-let cachedGeometry=null,geometryKey='',networkProjection=null,projectionSource='',projectionRevision=0,overviewHeight=0,viewportKey='';
-function updateProjection(){
- const baseHeight=innerWidth<=600?Math.max(940,Math.min(1200,innerHeight*1.25)):1160;
- const viewport=canvas.clientWidth+'/'+baseHeight;
- if(viewport!==viewportKey){viewportKey=viewport;overviewHeight=baseHeight;projectionSource='';}
- if(VIEW_LENGTH===LENGTH){
-  const source=[sim.elapsed,sim.cars.length,sim.incidents.length,...operations.ramps.map(r=>r.queue.length),canvas.clientWidth,baseHeight].join('/');
-  if(source!==projectionSource){
-   projectionSource=source;
-   const iconHeight=c=>(c.towing||c.kind==='recovery'?7:c.truck?6:c.kind==='ambulance'?4.5:c.emergency||c.blocker?4:3)+.6;
-   const options={length:LENGTH,height:Math.max(baseHeight,overviewHeight),iconHeight,gap:.6,ramps:operations.ramps,gantries:GANTRIES,minGantrySpacing:45};
-   let next=createNetworkProjection(sim.cars,sim.incidents,options);
-   if(next.requiredHeight>options.height){
-    // Grow in small blocks rather than reallocating an iPhone canvas for every
-    // extra pixel as a queue builds.
-    overviewHeight=Math.ceil(next.requiredHeight/128)*128;next=createNetworkProjection(sim.cars,sim.incidents,{...options,height:overviewHeight});
-   }
-   if(next.key!==networkProjection?.key){networkProjection=next;projectionRevision++;}
-  }
- }
- const height=VIEW_LENGTH===LENGTH?(networkProjection?.requiredHeight??baseHeight):baseHeight;
- if(canvas.style.height!==height+'px')canvas.style.height=height+'px';
-}
+let cachedGeometry=null,geometryKey='';
 function roadGeometry(){
- updateProjection();const w=canvas.clientWidth,h=canvas.clientHeight,key=[w,h,VIEW_LENGTH,viewStart,projectionRevision].join('/');
- if(key!==geometryKey){geometryKey=key;cachedGeometry=createRoadGeometry(w,h,LENGTH,VIEW_LENGTH,viewStart,networkProjection)}
+ const w=canvas.clientWidth,h=canvas.clientHeight,key=[w,h,VIEW_LENGTH,viewStart].join('/');
+ if(key!==geometryKey){geometryKey=key;cachedGeometry=createRoadGeometry(w,h,LENGTH,VIEW_LENGTH,viewStart)}
  return cachedGeometry;
 }
 function positionTargets(){const geo=roadGeometry();document.querySelectorAll('[data-gantry]').forEach(b=>{const lane=b.dataset.lane,x=GANTRIES[+b.dataset.gantry],left=geo.leftAt(x);b.style.left=(lane==='all'?left-51:left+(+lane)*geo.laneWidth)+'px';b.style.width=(lane==='all'?42:geo.laneWidth)+'px';const gy=geo.project(x);b.hidden=gy<20||gy>canvas.clientHeight-20;b.style.top=gy+'px'});if(!editor.hidden)positionEditor();positionJunctions()}
@@ -142,7 +119,7 @@ function roadPath(ctx,geo,offset){
 }
 function paintScenery(ctx,geo){
  const {width:w,height:h,roadWidth:roadW,laneWidth:lw,project:y}=geo,dpr=Math.min(devicePixelRatio||1,2);
- const surfaceKey=[w,h,dpr,VIEW_LENGTH,viewStart,VIEW_LENGTH===LENGTH?0:projectionRevision].join('/');
+ const surfaceKey=[w,h,dpr,VIEW_LENGTH,viewStart].join('/');
  if(surfaceKey!==roadSurfaceKey){
   roadSurfaceKey=surfaceKey;roadSurface=document.createElement('canvas');roadSurface.width=Math.round(w*dpr);roadSurface.height=Math.round(h*dpr);
   const base=roadSurface.getContext('2d');base.setTransform(dpr,0,0,dpr,0,0);base.fillStyle='#1d3938';base.fillRect(0,0,w,h);
@@ -259,7 +236,7 @@ function frame(now){
  }
  if(sim.eventId!==seenEvent){seenEvent=sim.eventId;notify(sim.lastEvent)}
  draw();
- if(now-lastDashboard>=200){updateDashboard();positionTargets();lastDashboard=now;}
+ if(now-lastDashboard>=200){updateDashboard();lastDashboard=now;}
  if(now-lastDeskUpdate>=500){updateTrafficDesk();updateOperations();lastDeskUpdate=now;}
  updateSiren();requestAnimationFrame(frame);
 }

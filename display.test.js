@@ -2,8 +2,6 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {layoutSprites,createSpriteLayout} from './display.js';
 import {createRoadGeometry,slipRoadPoint} from './road.js';
-import {createNetworkProjection} from './projection.js';
-import {GANTRIES} from './model.js';
 const options={left:90,laneWidth:55,project:x=>600-(x-1350)*1.41};
 function separated(sprites){
  for(let a=0;a<sprites.length;a++)for(let b=a+1;b<sprites.length;b++){
@@ -58,9 +56,7 @@ test('visible lane positions follow the model through crowded closure merges',as
 });
 
 function overviewFrame(cars,incidents=[],width=320,ramps=[]){
- const iconHeight=c=>(c.towing||c.kind==='recovery'?7:c.truck?6:c.kind==='ambulance'?4.5:c.emergency||c.blocker?4:3)+.6;
- const projection=createNetworkProjection(cars,incidents,{length:10000,height:940,iconHeight,gap:.6,ramps,gantries:GANTRIES,minGantrySpacing:45});
- const g=createRoadGeometry(width,projection.requiredHeight,10000,10000,0,projection);
+ const g=createRoadGeometry(width,940,10000);
  return {g,opts:{laneWidth:g.laneWidth,left:g.leftAt(0),project:g.project,laneX:g.laneX,angleAt:g.angleAt,overview:true,rampPosition:c=>slipRoadPoint(g,ramps[c.onRamp??c.slipRamp],c.x)}};
 }
 function centred(sprites,g,ramps=[]){
@@ -78,9 +74,9 @@ test('full-network overview draws every vehicle on its actual lane centre withou
  const {g,opts}=overviewFrame(cars,incidents),overview=layoutSprites(cars,incidents,opts);
  paintedApart(overview);centred(overview,g);
  assert.equal(overview.length,61+incidents.length);assert(overview.some(c=>c.static));assert(overview.some(c=>c.emergency));
- assert(overview.every(c=>c.height===c.nominalHeight));assert(overview.filter(c=>!c.emergency).every(c=>c.height===3));
+ assert(overview.every(c=>c.height===c.nominalHeight));assert(overview.filter(c=>!c.emergency).every(c=>Math.abs(c.height-4.7*.0988*.68)<1e-8));
 });
-test('overview keeps recognisable compact car, HGV and emergency artwork',()=>{
+test('full-network overview keeps very small traffic glyphs while Detail retains vehicle artwork',()=>{
  const cars=[{id:1,x:1000,lane:0,visualLane:0},{id:2,x:1300,lane:1,visualLane:1,truck:true},{id:3,x:1600,lane:2,visualLane:2,kind:'ambulance'},{id:4,x:2000,lane:2,visualLane:2,kind:'police'},{id:5,x:2500,lane:-1,visualLane:-1,kind:'recovery'}];
  const detail=layoutSprites(cars,[],options),overview=layoutSprites(cars,[],{...options,project:x=>550-x*.085,overview:true});
  for(const c of overview){const d=detail.find(x=>x.id===c.id);assert.deepEqual([c.designWidth,c.designHeight],[d.width,d.height]);assert(c.width<d.width&&c.height<d.height);assert.equal(c.cy,550-c.x*.085);}
@@ -100,7 +96,7 @@ function paintedApart(sprites){
  }
  assert(!sprites.some(c=>c.packingOverflow),'icons spilled out of lane');
 }
-test('single-file overview queues stay separated on their own lane centres',()=>{
+test('fixed full-network overview queues stay separate on their actual lane centres',()=>{
  for(const width of [320,390]){
   const cars=[];let id=0;
   for(let lane=0;lane<3;lane++){
@@ -170,7 +166,7 @@ test('turning icons stay in single file during dense live merging',async()=>{
  }
  assert(turning>100);
 });
-test('shared road spacing separates a turned nose without moving it sideways',()=>{
+test('fixed camera separates a turned nose without moving the road or vehicle sideways',()=>{
  const cars=[
   {id:1,x:900,lane:0,visualLane:0,length:4.7,laneChangeRate:0},
   {id:2,x:868,lane:1,visualLane:1,length:4.7,laneChangeRate:0},
@@ -178,4 +174,20 @@ test('shared road spacing separates a turned nose without moving it sideways',()
  ];
  const {g,opts}=overviewFrame(cars),sprites=layoutSprites(cars,[],opts);
  paintedApart(sprites);centred(sprites,g);
+});
+
+
+test('overview sizes stay fixed through traffic changes and keep the full 10 km camera',()=>{
+ for(const width of [320,390]){
+  const {g,opts}=overviewFrame([],[],width);
+  const cars=[{id:1,x:4000,lane:0,visualLane:0,length:4.7},{id:2,x:4010,lane:0,visualLane:0,length:16.5,truck:true},{id:3,x:4100,lane:1,visualLane:1,length:4.7,kind:'police',emergency:true}];
+  const first=layoutSprites(cars,[],opts),sizes=new Map(first.map(c=>[c.id,[c.width,c.height]]));
+  const landmarks=[450,1550,2650,3750,4850,6450,8050].map(x=>[g.center(x),g.project(x)]);
+  cars[1].x=4020;cars.push(...Array.from({length:200},(_,n)=>({id:100+n,x:8000-n*6.7,lane:2,visualLane:2,length:4.7})));
+  const nextFrame=overviewFrame(cars,[],width),next=layoutSprites(cars,[],nextFrame.opts);
+  assert.equal(next.length,cars.length);centred(next,nextFrame.g);
+  for(const c of next)if(sizes.has(c.id))assert.deepEqual([c.width,c.height],sizes.get(c.id));
+  assert.deepEqual([450,1550,2650,3750,4850,6450,8050].map(x=>[nextFrame.g.center(x),nextFrame.g.project(x)]),landmarks);
+  assert.equal(nextFrame.g.height,940);assert.equal(nextFrame.g.project(0),964);assert.equal(nextFrame.g.project(10000),-24);
+ }
 });

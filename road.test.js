@@ -1,9 +1,8 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRoadGeometry,slipRoadPoint,slipRoadEdges,roadworkCones} from './road.js';
-import {createNetworkProjection} from './projection.js';
 import {layoutSprites} from './display.js';
-import {LENGTH,GANTRIES} from './model.js';
+import {Simulation,LENGTH,GANTRIES} from './model.js';
 test('narrow curved carriageway and every sign target stay inside mobile and desktop maps',()=>{
  for(const width of [320,390,844,1440]){
   const g=createRoadGeometry(width,1055,LENGTH);assert(g.roadWidth<=width*.4);
@@ -64,13 +63,26 @@ test('joining curve and pavement meet the motorway with matching tangents',()=>{
 });
 
 
-test('queue-expanded road drawing and touch coordinates share a reversible projection',()=>{
- const cars=Array.from({length:100},(_,id)=>({id,x:7000-id*7,lane:0,visualLane:0,length:4.7}));
- const p=createNetworkProjection(cars,[],{length:LENGTH,height:1053.75,gantries:GANTRIES,iconHeight:()=>3.6});
- const g=createRoadGeometry(390,Math.round(p.requiredHeight),LENGTH,LENGTH,0,p);
- for(let x=0;x<=LENGTH;x+=25){
-  assert(Math.abs(g.unproject(g.project(x))-x)<1e-7);
-  assert(Math.abs(g.centerAtY(g.project(x))-g.center(x))<1e-7);
-  assert(g.scaleAt(x)>0&&Number.isFinite(g.angleAt(x)));
+test('road drawing and touch coordinates share a fixed reversible projection',()=>{
+ for(const width of [320,390])for(const [view,start] of [[LENGTH,0],[400,2400]]){
+  const g=createRoadGeometry(width,1055,LENGTH,view,start);
+  for(let x=0;x<=LENGTH;x+=25){
+   assert(Math.abs(g.unproject(g.project(x))-x)<1e-7);
+   assert(Math.abs(g.centerAtY(g.project(x))-g.center(x))<1e-7);
+   assert(g.scaleAt(x)>0&&Number.isFinite(g.angleAt(x)));
+  }
  }
+});
+test('road shape, junctions and gantries stay fixed while traffic queues and clears',()=>{
+ let seed=73;const sim=new Simulation(()=>((seed=(seed*1664525+1013904223)>>>0)/4294967296));
+ sim.cars=[];sim.incidents=[];sim.systemsEnabled=false;sim.nextArrival=sim.nextIncident=sim.nextEmergency=Infinity;sim.waiting=0;
+ for(const signal of sim.signals[0])signal.mode='closed';
+ for(let lane=0;lane<3;lane++)for(let n=0;n<20;n++)sim.spawn(lane,420-n*20,12);
+ const args=[390,1055,LENGTH],positions=[0,...GANTRIES,1200,5900,9000,LENGTH];
+ const coordinates=g=>positions.map(x=>[g.center(x),g.leftAt(x),g.project(x),g.angleAt(x),...([1200,5900,9000].includes(x)?Object.values(slipRoadPoint(g,{x,mergeLength:600},x-300)):[])]);
+ const before=coordinates(createRoadGeometry(...args));
+ for(let n=0;n<500;n++){sim.step(.1);if(n%50===0)assert.deepEqual(coordinates(createRoadGeometry(...args)),before);}
+ assert(sim.cars.some(c=>c.v<.5),'fixture did not create a stopped queue');
+ sim.cars=[];sim.incidents=[];
+ assert.deepEqual(coordinates(createRoadGeometry(...args)),before);
 });
