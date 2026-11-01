@@ -47,14 +47,14 @@ test('a closure forms a growing queue without vehicles crossing the closed gantr
  for (let i = 0; i < cars.length - 1; i++) assert(cars[i].x - cars[i].length > cars[i + 1].x);
 });
 
-test('all five gantries control their own downstream sections, including the last two', () => {
+test('all gantries control their own downstream sections, including the last two', () => {
  const s = new Simulation(seeded());quiet(s);s.cars=[];
- assert.equal(GANTRIES.length,5);assert.equal(LENGTH,6000);
+ assert.equal(GANTRIES.length,7);assert.equal(LENGTH,10000);
  for(let g=0;g<GANTRIES.length;g++) {
   s.signals[g][0].speed=20+g*10;
   assert.equal(s.signalAt(GANTRIES[g]+1,0).speed,20+g*10);
  }
- s.signals[4][1].mode='closed';const c=s.spawn(1,GANTRIES[4]-100,15);
+ const last=GANTRIES.length-1;s.signals[last][1].mode='closed';const c=s.spawn(1,GANTRIES[last]-100,15);
  assert(s.obstacle(c,1).gap<100);
 });
 test('lowering a posted limit measurably slows vehicles in that lane and section', () => {

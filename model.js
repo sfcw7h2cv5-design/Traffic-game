@@ -1,5 +1,5 @@
-export const LENGTH = 6000;
-export const GANTRIES = [450, 1550, 2650, 3750, 4850];
+export const LENGTH = 10000;
+export const GANTRIES = [450, 1550, 2650, 3750, 4850, 6450, 8050];
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
 export class Simulation {

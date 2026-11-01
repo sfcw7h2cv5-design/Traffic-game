@@ -28,3 +28,7 @@ canvas{height:760px}.network{border-radius:8px}
 /* A larger single road, with natural offscreen entry/exit and no density culling. */
 canvas{height:920px}.maplegend{position:static;padding:9px 12px;background:#1d3437;font-size:8px;min-height:28px}.mapwrap{overflow:hidden}
 @media(max-width:600px){canvas{height:clamp(780px,106svh,1040px)}.maplegend{position:static;padding:9px 12px;font-size:8px;min-height:28px}}
+
+/* A longer ribbon of road, with room for gentle bends and incident labels. */
+canvas{height:1160px}.road-sign-target.gantry-side{font-size:9px}#inlineSignals{max-width:340px}
+@media(max-width:600px){canvas{height:clamp(940px,125svh,1200px)}.road-sign-target.gantry-side{font-size:9px}.road-sign-target.gantry-side small{font-size:7px}.playback button{padding:6px}}
