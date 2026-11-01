@@ -139,3 +139,36 @@ test('police and ambulance both exceed 70 mph on clear roads, including under lo
   assert(vehicle.v/.44704>80,`${kind}: ${vehicle.v/.44704} mph`);
  }
 });
+
+test('merge arrows direct vehicles right and left, visibly and physically',()=>{
+ for(const [lane,target] of [[0,1],[2,1]]){
+  const s=new Simulation(seeded());quiet(s);s.cars=[];
+  const c=s.spawn(lane,2000,20);c.truck=false;c.cooldown=0;c.decision=0;
+  s.signals[1][lane].mode='merge';run(s,5);
+  assert.equal(c.lane,target);assert(Math.abs(c.visualLane-target)<.02);
+ }
+});
+test('vehicles merge out of a closed lane and do not re-enter it upstream',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(0,1300,20);c.cooldown=0;c.decision=0;
+ s.signals[1][0].mode='closed';run(s,25);
+ assert(c.x>1550);assert.notEqual(c.lane,0);
+});
+test('HGV can follow closure instructions into the only available lane',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(1,2000,15);c.truck=true;c.cooldown=0;c.decision=0;
+ s.signals[1][0].mode='closed';s.signals[1][1].mode='closed';run(s,6);
+ assert.equal(c.lane,2);assert(c.visualLane>1.98);
+});
+test('adjacent traffic yields to let a stopped vehicle merge out of a closure',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(0,1500,0);c.truck=false;c.cooldown=0;c.decision=0;
+ for(const x of [1450,1320,1190]){const neighbour=s.spawn(1,x,20);neighbour.truck=false;neighbour.cooldown=1000;}
+ s.signals[1][0].mode='closed';run(s,35);assert.equal(c.lane,1);assert(c.x>1550);
+});
+
+test('keep-left drivers do not return into a lane that is closing ahead',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(1,1400,5);c.truck=false;c.cooldown=0;c.decision=0;
+ s.signals[1][0].mode='closed';run(s,2);assert.equal(c.lane,1);
+});

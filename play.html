@@ -215,22 +215,22 @@ class Simulation {
       const warning = upcoming >= 0 ? this.signals[upcoming][c.lane] : sig;
       const approachingSiren=!c.emergency&&snapshot.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<240);
       const forced = sig.mode !== 'open' || upcoming >= 0 || (front.gap < 160 && front.speed < 3);
-      if (c.decision <= 0 && c.cooldown <= 0 && Math.abs(c.visualLane - c.lane) <= .02) {
+      if (c.decision <= 0 && (c.cooldown <= 0 || forced) && Math.abs(c.visualLane - c.lane) <= .02) {
         c.decision = .7 + this.random() * .8;
         let target = c.lane;
         const safe = lane => {
-          if (lane < 0 || lane > 2 || (c.truck && lane === 2) || this.signalAt(c.x, lane).mode !== 'open') return false;
-          if (upcoming >= 0 && this.signals[upcoming][lane].mode !== 'open') return false;
+          if (lane < 0 || lane > 2 || (c.truck && lane === 2 && !forced) || this.signalAt(c.x, lane).mode !== 'open') return false;
+          if (GANTRIES.some((x,g)=>x>c.x&&x-c.x<350&&this.signals[g][lane].mode!=='open')) return false;
           const ahead = this.obstacle(c, lane, this.cars);
           const behind = this.cars.filter(o => o.id !== c.id && (o.lane === lane || (Math.abs(o.visualLane-o.lane)>.02&&o.fromLane===lane)) && o.x < c.x)
             .sort((a, b) => b.x - a.x)[0];
           const rearGap = behind ? c.x - c.length - behind.x : 1000;
-          const rearNeeded = behind ? 5 + behind.v * 1.5 + Math.max(0, behind.v - c.v) * 3 : 0;
-          const horizon=4;
+          const rearNeeded = behind ? 5 + behind.v * (forced ? .85 : 1.5) + Math.max(0, behind.v - c.v) * (forced ? 1.5 : 3) : 0;
+          const horizon=forced?2:4;
           const futureFront=ahead.gap+Math.min(0,ahead.speed-c.v)*horizon;
           const futureRear=rearGap+Math.min(0,c.v-(behind?.v??c.v))*horizon;
           const overlapping=this.cars.some(o=>o.id!==c.id&&this.occupiedLanes(o).includes(lane)&&o.x>=c.x-c.length-3&&o.x-o.length<=c.x+3)||this.incidents.some(i=>i.lane===lane&&i.x>=c.x-c.length-4&&i.x-i.length<=c.x+4);
-          return !overlapping&&futureFront>6+c.v*(forced?1.1:1.8)&&futureRear>rearNeeded;
+          return !overlapping&&futureFront>6+c.v*(forced?.85:1.8)&&futureRear>rearNeeded;
         };
         if(approachingSiren&&c.lane>0&&safe(c.lane-1)){target=c.lane-1;}
         else if(c.kind==='recovery'&&c.recoveryTarget!=null&&c.lane>0&&safe(c.lane-1)){target=c.lane-1;}
@@ -271,7 +271,17 @@ class Simulation {
       }
       const unruly = this.scenario === 'reckless' && c.reckless;
       const limit = this.speedTarget(c);
-      const desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
+      let desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
+      const yielding=movementSnapshot.some(o=>{
+        if(o.lane<0||o.id===c.id||Math.abs(o.lane-c.lane)!==1||o.x<c.x+5||o.x>c.x+120)return false;
+        const current=this.signalAt(o.x,o.lane);
+        const next=GANTRIES.findIndex((x,g)=>x>o.x&&x-o.x<350&&this.signals[g][o.lane].mode!=='open');
+        const warning=next>=0?this.signals[next][o.lane]:current;
+        if(warning.mode==='open')return false;
+        const target=warning.mode==='merge'?(o.lane===2?1:o.lane+1):(o.lane<c.lane?o.lane+1:o.lane-1);
+        return target===c.lane&&this.signalAt(c.x,c.lane).mode==='open';
+      });
+      if(yielding)desired=Math.min(desired,Math.max(4,c.v-1.2));
       const headway = c.headway * (rain ? 1.35 : unruly ? .65 : 1);
       const closing = c.v - front.speed;
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
@@ -297,64 +307,26 @@ class Simulation {
   }
 }
 
-// The overview deliberately enlarges vehicle symbols. Physical coordinates stay
-// in the traffic model; queue symbols spread upstream to remain distinguishable.
-function layoutSprites(cars, incidents, {left, laneWidth, project}) {
- const source=[...cars.map(c=>({...c,static:false})),...incidents.map(i=>({...i,visualLane:i.lane,static:true}))].sort((a,b)=>b.x-a.x);
- const placed=[];
- for(const c of source){
-  const cx=c.lane<0?left-10:left+(c.visualLane+.5)*laneWidth;
+// Keep the map tied to physical positions. Symbols scale down only when traffic
+// is closely packed, rather than moving neighbours or delaying a visible merge.
+function layoutSprites(cars, incidents, {left,laneWidth,project}) {
+ const sprites=[...cars.map(c=>({...c,static:false})),...incidents.map(i=>({...i,visualLane:i.lane,static:true}))].map(c=>{
   const width=c.kind==='ambulance'?7:c.kind==='recovery'||c.truck?8:5;
-  const height=c.towing||c.kind==='recovery'?20:c.truck?13:c.kind==='ambulance'?10:6;
-  let cy=project(c.x);
-  for(const p of placed)if(Math.abs(cx-p.cx)<(width+p.width)/2+3)cy=Math.max(cy,p.cy+p.height+2);
-  placed.push({...c,cx,cy,width,height});
- }
- return placed;
-}
-
-// Keep a stable presentation across frames. Inserting a merging vehicle must
-// never re-pack existing cars backwards; its lateral movement waits for space.
-function createSpriteLayout(){
- let previous=new Map(),geometry='';
- const key=c=>c.static&&c.vehicleId==null?'incident:'+c.id:'car:'+(c.static?c.vehicleId:c.id);
- return (cars,incidents,options)=>{
-  const signature=[options.left,options.laneWidth,options.project(0),options.project(6000)].join(',');
-  const desired=layoutSprites(cars,incidents,options);
-  if(signature!==geometry){geometry=signature;previous=new Map(desired.map(c=>[key(c),c]));return desired;}
-  const alive=new Set(desired.map(key)),placed=[],next=new Map();
-  desired.sort((a,b)=>{
-   const pa=previous.get(key(a)),pb=previous.get(key(b));
-   if(pa&&pb)return pa.cy-pb.cy;
-   return pa?-1:pb?1:a.cy-b.cy;
-  });
-  const intersect=(cx,width,p)=>Math.abs(cx-p.cx)<(width+p.width)/2+3;
-  for(const c of desired){
-   const prior=previous.get(key(c));let cx=c.cx,cy=c.cy;
-   if(prior){
-    const maxAdvance=Math.max(1,Math.abs(c.x-prior.x)*Math.abs(options.project(1)-options.project(0))*2);
-    cy=Math.max(prior.cy-maxAdvance,Math.min(prior.cy,cy));
-    if(Math.abs(cx-prior.cx)>.01){
-     const sweptLeft=Math.min(cx,prior.cx)-c.width/2-3,sweptRight=Math.max(cx,prior.cx)+c.width/2+3;
-     for(const [id,old]of previous){
-      if(id===key(c)||!alive.has(id))continue;
-      const p=next.get(id)??old;
-      if(sweptLeft<p.cx+p.width/2&&sweptRight>p.cx-p.width/2&&cy<p.cy+p.height+2&&cy+c.height+2>p.cy){cx=prior.cx;break;}
-     }
-    }
-    const fit=x=>placed.reduce((y,p)=>intersect(x,c.width,p)?Math.max(y,p.cy+p.height+2):y,cy);
-    let fitted=fit(cx);
-    if(fitted>prior.cy+1e-8){cx=prior.cx;fitted=fit(cx);}
-    cy=Math.min(prior.cy,fitted);
-   }else{
-    let changed=true;
-    while(changed){changed=false;for(const p of placed)if(intersect(cx,c.width,p)&&cy<p.cy+p.height+2&&cy+c.height+2>p.cy){cy=p.cy+p.height+2;changed=true;}}
+  const nominalHeight=c.towing||c.kind==='recovery'?20:c.truck?13:c.kind==='ambulance'?10:6;
+  return {...c,cx:c.lane<0?left-10:left+(c.visualLane+.5)*laneWidth,cy:project(c.x),width,nominalHeight,height:nominalHeight};
+ }).sort((a,b)=>a.cy-b.cy);
+ for(let i=0;i<sprites.length;i++){
+  const c=sprites[i];
+  for(let j=i+1;j<sprites.length;j++){
+   const behind=sprites[j];
+   if(Math.abs(c.cx-behind.cx)<(c.width+behind.width)/2+3){
+    c.height=Math.min(c.height,Math.max(0,(behind.cy-c.cy)*.75));
    }
-   const sprite={...c,cx,cy};placed.push(sprite);next.set(key(c),sprite);
   }
-  previous=next;return placed;
- };
+ }
+ return sprites;
 }
+function createSpriteLayout(){return layoutSprites;}
 
 const placeSprites=createSpriteLayout();
 const $=s=>document.querySelector(s),sim=new Simulation();window.sim=sim;
@@ -394,17 +366,19 @@ function updateSiren(){if(!audio)return;const active=sound&&!paused&&!document.h
 document.addEventListener('visibilitychange',()=>{if(gain&&document.hidden)gain.gain.setTargetAtTime(0,audio.currentTime,.02)});
 function draw(){const w=canvas.clientWidth,h=canvas.clientHeight,dpr=devicePixelRatio||1;if(canvas.width!==w*dpr||canvas.height!==h*dpr){canvas.width=w*dpr;canvas.height=h*dpr}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#1d3437';ctx.fillRect(0,0,w,h);const roadW=Math.min(w*.48,250),left=(w-roadW)/2,lw=roadW/3,top=30,bottom=h-46,scale=(bottom-top)/LENGTH,y=x=>bottom-x*scale;ctx.fillStyle='#2c3c40';ctx.fillRect(left-15,0,roadW+30,h);ctx.fillStyle='#35464a';ctx.fillRect(left,0,roadW,h);ctx.strokeStyle='#9eafa5';ctx.lineWidth=1;for(const x of [left,left+roadW]){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}ctx.setLineDash([8,12]);ctx.strokeStyle='#82938b88';for(let l=1;l<3;l++){ctx.beginPath();ctx.moveTo(left+l*lw,0);ctx.lineTo(left+l*lw,h);ctx.stroke()}ctx.setLineDash([]);
 ctx.font='9px sans-serif';ctx.fillStyle='#7d9990';ctx.textAlign='left';for(let km=0;km<=LENGTH/1000;km++){ctx.fillText(`${km}.0 km`,15,y(km*1000));ctx.fillRect(left-25,y(km*1000),8,1)}ctx.save();ctx.translate(w-20,h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#79968c';ctx.font='9px sans-serif';ctx.fillText('NORTHBOUND  →',-55,0);ctx.restore();
-// Vehicle symbols are enlarged for readability. Stack their display bounds
-// upstream in dense queues so enlarged symbols never cover one another.
+// Use physical positions for every lane change; fit symbol length to the gap.
 for(const c of placeSprites(sim.cars,sim.incidents,{left,laneWidth:lw,project:y})){
- const {cx,cy,width,height}=c;
+ const {cx,cy,width}=c;const height=c.nominalHeight;
+ ctx.save();ctx.translate(0,cy);ctx.scale(1,c.height/height);ctx.translate(0,-cy);
  ctx.fillStyle=c.static?'#ef9476':c.kind==='police'?'#f2f2dd':c.kind==='ambulance'?'#edee75':c.kind==='recovery'?'#f5b85a':c.truck?'#e7dfb5':c.braking?'#e7b66f':['#c6ddd1','#7ba9ad','#a9c998','#d9e2d5'][c.id%4];
  ctx.beginPath();ctx.roundRect(cx-width/2,cy,width,height,1);ctx.fill();ctx.fillStyle='#385a63';ctx.fillRect(cx-width/2+.6,cy+1,width-1.2,2);
  if(c.kind==='ambulance'||c.kind==='police'){ctx.fillStyle='#76a85c';ctx.fillRect(cx-width/2,cy+4,width,2);ctx.fillStyle=Math.floor(sim.elapsed*7)%2?'#45c5ff':'#e5faff';ctx.fillRect(cx-width/2-1,cy+2,3,2);ctx.fillRect(cx+width/2-2,cy+2,3,2)}
  if(c.kind==='recovery'){ctx.fillStyle='#fff3ab';ctx.fillRect(cx-4,cy+3,8,2);if(c.towing){ctx.fillStyle='#df8d72';ctx.fillRect(cx-2.5,cy+12,5,7)}}
  if(c.truck){ctx.fillStyle='#8c9571';ctx.fillRect(cx-width/2+1,cy+5,width-2,1)}
  if(c.static){if(Math.floor(sim.elapsed*2)%2===0){ctx.fillStyle='#ffd076';ctx.fillRect(cx-4,cy+height-2,2,2);ctx.fillRect(cx+2,cy+height-2,2,2)}
- ctx.fillStyle='#efb8a0';ctx.font='8px sans-serif';ctx.textAlign='left';ctx.fillText(c.type.toUpperCase(),left+roadW+15,cy+3);
+ }
+ ctx.restore();
+ if(c.static){ctx.fillStyle='#efb8a0';ctx.font='8px sans-serif';ctx.textAlign='left';ctx.fillText(c.type.toUpperCase(),left+roadW+15,cy+3);
  const status=c.status==='awaiting-recovery'?'AWAITING TOW':c.status==='recovery-en-route'?'TOW EN ROUTE':c.status==='recovering'?'LOADING VEHICLE':'CREWS WORKING';ctx.fillText(status,left+roadW+15,cy+14)}
 }
 GANTRIES.forEach((g,gi)=>{const gy=y(g);ctx.fillStyle=gi===selected?'#bbdf86':'#6e8880';ctx.fillRect(left-12,gy,roadW+24,3);ctx.fillRect(left-12,gy,3,16);ctx.fillRect(left+roadW+9,gy,3,16);ctx.textAlign='left';ctx.font='bold 9px sans-serif';sim.signals[gi].forEach((s,l)=>{const x=left+(l+.5)*lw;ctx.fillStyle='#101e24';ctx.fillRect(x-14,gy-14,28,25);ctx.textAlign='center';ctx.font='bold 13px sans-serif';ctx.fillStyle=s.mode==='closed'?'#ff7768':s.mode==='merge'?'#efc676':'#e4ecdf';ctx.fillText(s.mode==='closed'?'×':s.mode==='merge'?l===2?'↖':'↗':s.speed,x,gy+3);if(s.mode==='open'){ctx.strokeStyle='#e57869';ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(x,gy-2,10,0,Math.PI*2);ctx.stroke()}})});ctx.textAlign='center';ctx.fillStyle='#93b29e';ctx.font='9px sans-serif';ctx.fillText('↑     ↑     ↑',w/2,h-18)}

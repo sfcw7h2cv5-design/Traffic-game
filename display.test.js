@@ -48,3 +48,22 @@ test('live traffic rendering stays separated and forward-only through incidents 
   previous=new Map(sprites.map(c=>[key(c),c]));
  }
 });
+
+test('visible lane positions always follow the model, including in crowded closure merges',async()=>{
+ const {Simulation}=await import('./model.js');let n=42;
+ const sim=new Simulation(()=>((n=(n*1664525+1013904223)>>>0)/4294967296));
+ sim.nextIncident=sim.nextEmergency=Infinity;sim.signals[1][0].mode='closed';
+ const layout=createSpriteLayout(),options={left:90,laneWidth:55,project:x=>630-x*.094};
+ let changes=0;
+ for(let step=0;step<1200;step++){
+  const before=new Map(sim.cars.map(c=>[c.id,c.lane]));sim.step(.1);
+  const sprites=layout(sim.cars,sim.incidents,options);
+  for(const c of sim.cars){
+   if(before.has(c.id)&&c.lane!==before.get(c.id))changes++;
+   const sprite=sprites.find(x=>!x.static&&x.id===c.id);
+   assert(Math.abs(sprite.cx-(c.lane<0?80:90+(c.visualLane+.5)*55))<1e-7);
+   assert(Math.abs(sprite.cy-options.project(c.x))<1e-7);
+  }
+ }
+ assert(changes>5);
+});

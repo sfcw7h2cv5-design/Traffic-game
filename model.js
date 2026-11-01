@@ -194,22 +194,22 @@ export class Simulation {
       const warning = upcoming >= 0 ? this.signals[upcoming][c.lane] : sig;
       const approachingSiren=!c.emergency&&snapshot.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<240);
       const forced = sig.mode !== 'open' || upcoming >= 0 || (front.gap < 160 && front.speed < 3);
-      if (c.decision <= 0 && c.cooldown <= 0 && Math.abs(c.visualLane - c.lane) <= .02) {
+      if (c.decision <= 0 && (c.cooldown <= 0 || forced) && Math.abs(c.visualLane - c.lane) <= .02) {
         c.decision = .7 + this.random() * .8;
         let target = c.lane;
         const safe = lane => {
-          if (lane < 0 || lane > 2 || (c.truck && lane === 2) || this.signalAt(c.x, lane).mode !== 'open') return false;
-          if (upcoming >= 0 && this.signals[upcoming][lane].mode !== 'open') return false;
+          if (lane < 0 || lane > 2 || (c.truck && lane === 2 && !forced) || this.signalAt(c.x, lane).mode !== 'open') return false;
+          if (GANTRIES.some((x,g)=>x>c.x&&x-c.x<350&&this.signals[g][lane].mode!=='open')) return false;
           const ahead = this.obstacle(c, lane, this.cars);
           const behind = this.cars.filter(o => o.id !== c.id && (o.lane === lane || (Math.abs(o.visualLane-o.lane)>.02&&o.fromLane===lane)) && o.x < c.x)
             .sort((a, b) => b.x - a.x)[0];
           const rearGap = behind ? c.x - c.length - behind.x : 1000;
-          const rearNeeded = behind ? 5 + behind.v * 1.5 + Math.max(0, behind.v - c.v) * 3 : 0;
-          const horizon=4;
+          const rearNeeded = behind ? 5 + behind.v * (forced ? .85 : 1.5) + Math.max(0, behind.v - c.v) * (forced ? 1.5 : 3) : 0;
+          const horizon=forced?2:4;
           const futureFront=ahead.gap+Math.min(0,ahead.speed-c.v)*horizon;
           const futureRear=rearGap+Math.min(0,c.v-(behind?.v??c.v))*horizon;
           const overlapping=this.cars.some(o=>o.id!==c.id&&this.occupiedLanes(o).includes(lane)&&o.x>=c.x-c.length-3&&o.x-o.length<=c.x+3)||this.incidents.some(i=>i.lane===lane&&i.x>=c.x-c.length-4&&i.x-i.length<=c.x+4);
-          return !overlapping&&futureFront>6+c.v*(forced?1.1:1.8)&&futureRear>rearNeeded;
+          return !overlapping&&futureFront>6+c.v*(forced?.85:1.8)&&futureRear>rearNeeded;
         };
         if(approachingSiren&&c.lane>0&&safe(c.lane-1)){target=c.lane-1;}
         else if(c.kind==='recovery'&&c.recoveryTarget!=null&&c.lane>0&&safe(c.lane-1)){target=c.lane-1;}
@@ -250,7 +250,17 @@ export class Simulation {
       }
       const unruly = this.scenario === 'reckless' && c.reckless;
       const limit = this.speedTarget(c);
-      const desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
+      let desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
+      const yielding=movementSnapshot.some(o=>{
+        if(o.lane<0||o.id===c.id||Math.abs(o.lane-c.lane)!==1||o.x<c.x+5||o.x>c.x+120)return false;
+        const current=this.signalAt(o.x,o.lane);
+        const next=GANTRIES.findIndex((x,g)=>x>o.x&&x-o.x<350&&this.signals[g][o.lane].mode!=='open');
+        const warning=next>=0?this.signals[next][o.lane]:current;
+        if(warning.mode==='open')return false;
+        const target=warning.mode==='merge'?(o.lane===2?1:o.lane+1):(o.lane<c.lane?o.lane+1:o.lane-1);
+        return target===c.lane&&this.signalAt(c.x,c.lane).mode==='open';
+      });
+      if(yielding)desired=Math.min(desired,Math.max(4,c.v-1.2));
       const headway = c.headway * (rain ? 1.35 : unruly ? .65 : 1);
       const closing = c.v - front.speed;
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
