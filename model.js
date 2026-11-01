@@ -11,6 +11,7 @@ export class Simulation {
     this.nextArrival = 1 + random() * 3;
     this.nextIncident = 35 + random() * 30;
     this.eventId = 0; this.lastEvent = '';
+    this.incidentId = 0; this.nextEmergency = 20 + random() * 25;
     // Stagger each lane independently; most traffic starts in the running lane.
     for (let lane = 0; lane < 3; lane++) {
       for (let x = 100 + random() * 120; x < LENGTH; x += [155, 330, 780][lane] + random() * 140) {
@@ -18,11 +19,11 @@ export class Simulation {
       }
     }
   }
-  spawn(lane, x = 0, v = 0) {
-    const truck = lane < 2 && this.random() < (lane === 0 ? .26 : .10);
+  spawn(lane, x = 0, v = 0, kind = null) {
+    const truck = !kind && lane < 2 && this.random() < (lane === 0 ? .26 : .10);
     const car = {
-      id: this.id++, lane, fromLane: lane, visualLane: lane, x, v,
-      length: truck ? 16.5 : 4.7, truck,
+      id: this.id++, kind, emergency: kind === 'police' || kind === 'ambulance', lane, fromLane: lane, visualLane: lane, x, v,
+      length: kind === 'recovery' ? 11 : kind === 'ambulance' ? 7 : truck ? 16.5 : 4.7, truck,
       desired: truck ? 23 + this.random() * 2 : 27 + this.random() * 6,
       headway: 1.8 + this.random() * .9,
       reaction: .65 + this.random() * .8,
@@ -32,16 +33,20 @@ export class Simulation {
       cooldown: this.random() * 4, decision: this.random(),
       restart: 0, a: 0, braking: false,
     };
+    if(car.emergency){car.desired=kind==='police'?39:36;car.acceleration=1.9;car.headway=1.4;}
+    if(kind==='recovery'){car.desired=24;car.acceleration=.8;}
     car.v = Math.min(v, car.desired);
     this.cars.push(car);
     return car;
   }
   signalAt(x, lane) {
+    if(lane<0)return {speed:55,mode:'open'};
     let i = -1;
     for (let j = 0; j < GANTRIES.length; j++) if (x >= GANTRIES[j]) i = j;
     return i < 0 ? { speed: 70, mode: 'open' } : this.signals[i][lane];
   }
   speedTarget(car) {
+    if(car.emergency)return car.desired;
     // A lower limit affects its whole downstream section. Drivers also see
     // approaching signs and brake comfortably before passing the gantry.
     let target = this.signalAt(car.x, car.lane).speed * .44704;
@@ -56,7 +61,7 @@ export class Simulation {
   obstacle(car, lane, traffic = this.cars) {
     let pos = LENGTH + 1000, speed = car.desired;
     for (const c of traffic) {
-      const occupying = c.lane === lane || (Math.abs(c.visualLane - c.lane) > .08 && c.fromLane === lane);
+      const occupying = c.lane === lane || (Math.abs(c.visualLane - c.lane) > .02 && c.fromLane === lane);
       if (c.id !== car.id && occupying && c.x >= car.x && c.x - c.length < pos) {
         pos = c.x - c.length; speed = c.v;
       }
@@ -70,26 +75,88 @@ export class Simulation {
     return { gap: Math.max(.1, pos - car.x), speed };
   }
   addIncident(lane = 0, x = 2200, type = 'breakdown') {
+    if(this.incidents.some(i=>i.lane===(type==='breakdown'?0:lane)&&Math.abs(i.x-x)<150))return null;
     if (type === 'breakdown') lane = 0;
     // Use an actual vehicle where possible, preserving its position and appearance.
-    const vehicle = this.cars.filter(c => c.lane === lane && c.x > 900 && c.x < LENGTH - 600 && c.v > 10)
+    const vehicle = this.cars.filter(c => c.lane === lane && c.x > 900 && c.x < LENGTH - 600 && c.v > 10 && !c.kind && !this.incidents.some(i=>i.lane===lane&&Math.abs(i.x-c.x)<80))
       .sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
-    const incident = { lane, x: vehicle?.x ?? x, type, truck: vehicle?.truck ?? false,
+    if(!vehicle&&this.cars.some(c=>c.lane===lane&&Math.abs(c.x-x)<40))return null;
+    const incident = { id: this.incidentId++, lane, x: vehicle?.x ?? x, type, truck: vehicle?.truck ?? false,
       length: vehicle?.length ?? 4.7, started: this.elapsed,
-      clearsAt: this.elapsed + ({ breakdown: 100, debris: 50, collision: 150 }[type] ?? 100) + this.random() * 40 };
+      status: type==='breakdown'?'awaiting-recovery':'crews-working', dispatchAt: this.elapsed+45+this.random()*30,
+      workDuration: 140+this.random()*80,
+      clearsAt: type==='breakdown'?Infinity:this.elapsed+({debris:240,collision:420}[type]??300)+this.random()*120 };
     if (vehicle) this.cars = this.cars.filter(c => c.id !== vehicle.id);
     this.incidents.push(incident);
     this.lastEvent = `${type === 'breakdown' ? 'Broken-down ' + (incident.truck ? 'HGV' : 'car') : type === 'debris' ? 'Debris reported' : 'Collision reported'} · Lane ${lane + 1} · ${(incident.x / 1000).toFixed(2)} km. Set upstream warnings.`;
     this.eventId++;
     return incident;
   }
+  occupiedLanes(c) {
+    return Math.abs(c.visualLane-c.lane)>.02?[c.lane,c.fromLane]:[c.lane];
+  }
+  enforceSeparation() {
+    // Reserve both lanes throughout a manoeuvre; enforce a physical bumper gap
+    // after simultaneous integration, including at incidents and during towing.
+    const obstacles=this.incidents.map(i=>({...i,static:true,visualLane:i.lane,fromLane:i.lane}));
+    for(let pass=0;pass<this.cars.length+1;pass++){
+      let changed=false;
+      // Fixed obstructions cannot be displaced by a merging vehicle's nose.
+      for(const c of this.cars)for(const i of obstacles){
+        if(!this.occupiedLanes(c).includes(i.lane))continue;
+        if(c.x>=i.x-i.length-2&&c.x-c.length<i.x+2){
+          const bound=i.x-i.length-2;
+          if(c.x>bound+1e-8){c.x=bound;c.v=0;c.a=Math.min(0,c.a);changed=true;}
+        }
+      }
+      const leaders=[];
+      for(const c of [...this.cars].sort((a,b)=>b.x-a.x||a.id-b.id)){
+        const lanes=this.occupiedLanes(c);
+        for(const leader of leaders)if(this.occupiedLanes(leader).some(l=>lanes.includes(l))){
+          const safe=leader.x-leader.length-2;
+          if(c.x>safe+1e-8){c.x=safe;c.v=Math.min(c.v,leader.v??0);c.a=Math.min(0,c.a);changed=true;}
+        }
+        leaders.push(c);
+      }
+      if(!changed)break;
+    }
+  }
+  dispatchRecovery(incident) {
+    if(!incident||incident.type!=='breakdown'||incident.status!=='awaiting-recovery')return false;
+    // Recovery joins via the left hard shoulder, which is separate from traffic.
+    const tow=this.spawn(-1,Math.max(0,incident.x-1000),20,'recovery');
+    tow.recoveryTarget=incident.id;incident.status='recovery-en-route';
+    this.lastEvent=`Recovery truck dispatched · Lane 1 · ${(incident.x/1000).toFixed(2)} km.`;this.eventId++;
+    return true;
+  }
+  manageRecovery(dt) {
+    for(const i of this.incidents){
+      if(i.type!=='breakdown')continue;
+      if(i.status==='awaiting-recovery'&&this.elapsed>=i.dispatchAt)this.dispatchRecovery(i);
+      const tow=this.cars.find(c=>c.recoveryTarget===i.id);
+      if(i.status==='recovery-en-route'&&tow&&tow.x>=i.x-25){
+        tow.x=i.x-25;tow.v=0;tow.recovering=i.id;i.status='recovering';i.clearsAt=this.elapsed+i.workDuration;
+        this.lastEvent='Recovery on scene · loading the broken-down vehicle.';this.eventId++;
+      }
+    }
+  }
   step(dt) {
     this.elapsed += dt;
+    this.manageRecovery(dt);
+    if(this.elapsed>=this.nextEmergency){
+      const lane=2;
+      if(!this.cars.some(c=>this.occupiedLanes(c).includes(lane)&&c.x<100)){const type=this.random()<.5?'ambulance':'police';this.spawn(lane,0,30,type);this.lastEvent=(type==='ambulance'?'Ambulance':'Police car')+' on priority response · give it a clear route.';this.eventId++;}
+      this.nextEmergency=this.elapsed+70+this.random()*80;
+    }
     const cleared = this.incidents.filter(i => i.clearsAt <= this.elapsed);
     if (cleared.length) {
       this.incidents = this.incidents.filter(i => !(i.clearsAt <= this.elapsed));
       this.lastEvent = `Recovery complete · ${cleared.length} incident${cleared.length > 1 ? 's' : ''} cleared automatically. Check your signals and reopen lanes when safe.`;
       this.eventId++;
+      for(const incident of cleared) {
+        const tow=this.cars.find(c=>c.recovering===incident.id);
+        if(tow){tow.recovering=null;tow.recoveryTarget=null;tow.towing=true;tow.cooldown=0;tow.length+=incident.length;}
+      }
     }
     if (this.elapsed >= this.nextIncident) {
       if (this.incidents.length < 3) {
@@ -118,11 +185,16 @@ export class Simulation {
     // makes followers react instantly and produces artificial synchronised motion.
     const snapshot = this.cars.map(c => ({ ...c }));
     for (const c of this.cars) {
+      if(c.recovering!=null){c.v=0;continue;}
+      if(c.lane<0){
+        c.v=Math.min(c.desired,c.v+c.acceleration*dt);c.x+=c.v*dt;continue;
+      }
       c.cooldown -= dt; c.decision -= dt;
       const sig = this.signalAt(c.x, c.lane);
       let front = this.obstacle(c, c.lane, snapshot);
       const upcoming = GANTRIES.findIndex((x, g) => x > c.x && x - c.x < 350 && this.signals[g][c.lane].mode !== 'open');
       const warning = upcoming >= 0 ? this.signals[upcoming][c.lane] : sig;
+      const approachingSiren=!c.emergency&&snapshot.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<240);
       const forced = sig.mode !== 'open' || upcoming >= 0 || (front.gap < 160 && front.speed < 3);
       if (c.decision <= 0 && c.cooldown <= 0 && Math.abs(c.visualLane - c.lane) < .08) {
         c.decision = .7 + this.random() * .8;
@@ -131,19 +203,21 @@ export class Simulation {
           if (lane < 0 || lane > 2 || (c.truck && lane === 2) || this.signalAt(c.x, lane).mode !== 'open') return false;
           if (upcoming >= 0 && this.signals[upcoming][lane].mode !== 'open') return false;
           const ahead = this.obstacle(c, lane, this.cars);
-          const behind = this.cars.filter(o => o.id !== c.id && (o.lane === lane || Math.abs(o.visualLane - lane) < .9) && o.x < c.x)
+          const behind = this.cars.filter(o => o.id !== c.id && (o.lane === lane || (Math.abs(o.visualLane-o.lane)>.02&&o.fromLane===lane)) && o.x < c.x)
             .sort((a, b) => b.x - a.x)[0];
           const rearGap = behind ? c.x - c.length - behind.x : 1000;
           const rearNeeded = behind ? 5 + behind.v * 1.5 + Math.max(0, behind.v - c.v) * 3 : 0;
           return ahead.gap > 6 + c.v * (forced ? 1.1 : 1.8) && rearGap > rearNeeded;
         };
-        if (forced) {
+        if(approachingSiren&&c.lane>0&&safe(c.lane-1)){target=c.lane-1;}
+        else if(c.kind==='recovery'&&c.recoveryTarget!=null&&c.lane>0&&safe(c.lane-1)){target=c.lane-1;}
+        else if (forced) {
           const candidates = warning.mode === 'merge' ? [c.lane === 2 ? 1 : c.lane + 1] : [c.lane + 1, c.lane - 1];
           target = candidates.find(safe) ?? c.lane;
         } else {
           // Return left unless actively passing a slower vehicle there.
           const left = c.lane - 1;
-          if (left >= 0 && safe(left)) {
+          if (!c.emergency && left >= 0 && safe(left)) {
             const gap = this.obstacle(c, left, snapshot);
             if (gap.gap > Math.max(65, c.v * 3.5) || gap.speed >= Math.min(c.desired, sig.speed * .44704) - 1) target = left;
           }
@@ -180,6 +254,7 @@ export class Simulation {
       c.braking = c.a < -.6;
       c.visualLane += (c.lane - c.visualLane) * Math.min(1, dt * .85);
     }
+    this.enforceSeparation();
     this.cars = this.cars.filter(c => {
       if (c.x > LENGTH) { this.exits.push(this.elapsed); return false; } return true;
     });

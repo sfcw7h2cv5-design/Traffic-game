@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation, LENGTH, GANTRIES } from './model.js';
 function seeded(seed = 42) { let n = seed; return () => ((n = (n * 1664525 + 1013904223) >>> 0) / 4294967296); }
-function quiet(s) { s.nextIncident = Infinity; s.nextArrival = Infinity; s.waiting = 0; }
+function quiet(s) { s.nextIncident = Infinity; s.nextEmergency = Infinity; s.nextArrival = Infinity; s.waiting = 0; }
 function run(s, seconds) { for (let i = 0; i < seconds * 10; i++) s.step(.1); }
 test('free traffic keeps left, with identifiable HGVs and sparse overtaking lanes', () => {
  const s = new Simulation(seeded()); quiet(s);
@@ -70,11 +70,52 @@ test('drivers anticipate a lower limit before the gantry rather than braking onl
  const c=s.spawn(0,GANTRIES[4]-120,30);c.truck=false;c.desired=32;c.cooldown=1000;
  run(s,2);assert(c.x<GANTRIES[4]);assert(c.v<29);
 });
-test('incidents expire automatically and leave operator signals unchanged', () => {
+test('breakdowns wait for a real recovery truck, then load and tow away', () => {
  const s=new Simulation(seeded());quiet(s);s.cars=[];
  s.signals[1][0].mode='closed';const i=s.addIncident(0,2200,'breakdown');
- assert(i.clearsAt-s.elapsed>=100&&i.clearsAt-s.elapsed<=140);
- run(s,i.clearsAt-.2);assert.equal(s.incidents.length,1);
- run(s,1);assert.equal(s.incidents.length,0);
- assert.equal(s.signals[1][0].mode,'closed');assert(s.lastEvent.includes('cleared automatically'));
+ assert.equal(i.clearsAt,Infinity);assert.equal(i.status,'awaiting-recovery');
+ assert(s.dispatchRecovery(i));assert(!s.dispatchRecovery(i));
+ const tow=s.cars.find(c=>c.kind==='recovery');assert(tow&&tow.lane===-1);
+ run(s,2);assert(s.incidents.includes(i));assert.equal(i.status,'recovery-en-route');
+ for(let n=0;n<1000&&i.status!=='recovering';n++)s.step(.1);
+ assert.equal(i.status,'recovering');assert(i.clearsAt>s.elapsed+130);
+ for(let n=0;n<3000&&s.incidents.length;n++)s.step(.1);
+ assert.equal(s.incidents.length,0);assert(tow.towing);assert.equal(tow.recoveryTarget,null);
+ assert.equal(s.signals[1][0].mode,'closed');
+});
+test('debris lasts several simulated minutes before crews clear it',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const i=s.addIncident(1,2500,'debris');assert(i.clearsAt>=240);
+ run(s,150);assert(s.incidents.includes(i));
+ run(s,220);assert(!s.incidents.includes(i));
+});
+test('emergency vehicles have priority speed but cannot pass through traffic',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const police=s.spawn(2,1000,30,'police');const ordinary=s.spawn(0,1000,30);ordinary.truck=false;ordinary.desired=32;ordinary.cooldown=1000;
+ run(s,15);assert(police.v>ordinary.v+3);assert(police.emergency);
+ s.cars=[];const front=s.spawn(2,1500,0),ambulance=s.spawn(2,1470,30,'ambulance');
+ front.cooldown=ambulance.cooldown=1000;front.desired=0.1;
+ run(s,4);assert(ambulance.x<=front.x-front.length-1.99);
+});
+test('traffic yields left for an approaching emergency vehicle when there is a gap',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const car=s.spawn(2,1200,25);car.cooldown=0;car.decision=0;
+ s.spawn(2,1050,35,'ambulance');run(s,.2);assert.equal(car.lane,1);
+});
+test('dense traffic never overlaps, including lane-change reservations and incidents',()=>{
+ for(const seed of [42,77,192]){
+  const s=new Simulation(seeded(seed));s.scenario='busy';s.nextEmergency=0;
+  s.addIncident(0,2400,'breakdown');
+  for(let n=0;n<3000;n++){
+   if(n===900)s.signals[2][1].mode='closed';
+   s.step(.1);
+   const bodies=[...s.cars,...s.incidents.map(i=>({...i,visualLane:i.lane,fromLane:i.lane}))];
+   for(let a=0;a<bodies.length;a++)for(let b=a+1;b<bodies.length;b++){
+    const x=bodies[a],y=bodies[b];
+    if(!s.occupiedLanes(x).some(l=>s.occupiedLanes(y).includes(l)))continue;
+    const front=x.x>=y.x?x:y,back=front===x?y:x;
+    assert(front.x-front.length-back.x>=1.99,`overlap seed ${seed} time ${s.elapsed}: ${front.id}/${back.id}`);
+   }
+  }
+ }
 });
