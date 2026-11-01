@@ -247,3 +247,38 @@ test('clear-road police and ambulance reach the higher response speeds quickly',
   const c=s.spawn(2,1000,30,kind);run(s,20);assert(c.v/.44704>minimum);
  }
 });
+
+test('cars already stopped before two closed lanes can reach the third open lane',()=>{
+ for(const [lane,closed,target] of [[0,[0,1],2],[2,[1,2],0]]){
+  const s=new Simulation(seeded());quiet(s);s.cars=[];
+  const c=s.spawn(lane,1538,0);c.truck=false;c.cooldown=0;c.decision=0;
+  for(const l of closed)s.signals[1][l].mode='closed';
+  let last=c.x;
+  for(let n=0;n<500;n++){s.step(.1);assert(c.x>=last-1e-7);last=c.x;}
+  assert.equal(c.lane,target);assert(c.x>1700);
+ }
+});
+test('vehicles within a two-lane closure move across it to the open lane',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(0,1900,5);c.truck=true;c.cooldown=0;c.decision=0;
+ s.signals[1][0].mode=s.signals[1][1].mode='closed';run(s,25);
+ assert.equal(c.lane,2);assert(c.x>1950);
+});
+test('a stopped driver can use a close safe gap beside a single closure',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(0,1538,0);c.truck=false;c.cooldown=0;c.decision=0;
+ s.signals[1][0].mode='closed';run(s,25);assert.equal(c.lane,1);assert(c.x>1550);
+});
+test('drivers still wait when every lane is closed',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(0,1538,0);for(const lane of s.signals[1])lane.mode='closed';
+ run(s,20);assert.equal(c.lane,0);assert(c.x<1550);
+});
+
+test('traffic can navigate successive closures whose open lane changes',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(0,2100,10);c.truck=false;c.cooldown=0;c.decision=0;
+ s.signals[1][0].mode=s.signals[1][1].mode='closed';
+ s.signals[2][0].mode=s.signals[2][2].mode='closed';
+ for(let n=0;n<1000&&c.x<2800;n++)s.step(.1);assert(c.x>=2800);assert.equal(c.lane,1);
+});
