@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=17';
-import {createSpriteLayout} from './display.js?v=17';
-import {createRoadGeometry} from './road.js?v=17';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=18';
+import {createSpriteLayout} from './display.js?v=18';
+import {createRoadGeometry} from './road.js?v=18';
 const placeSprites=createSpriteLayout();
 const $=s=>document.querySelector(s),sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
@@ -8,8 +8,11 @@ let VIEW_LENGTH=LENGTH,viewStart=0,detailArmed=false,lastDeskUpdate=-Infinity;
 const canvas=$('#road'),ctx=canvas.getContext('2d'),editor=$('#inlineSignals');
 function notify(text){$('#event').textContent=text}
 function closeEditor(){editor.hidden=true;editorOpener?.setAttribute('aria-expanded','false')}
+let activeRamp=null;
+function closeRamp(){activeRamp=null;$('#rampControls').hidden=true;}
+const operations=sim.systems;
 function roadGeometry(){return createRoadGeometry(canvas.clientWidth,canvas.clientHeight,LENGTH,VIEW_LENGTH,viewStart)}
-function positionTargets(){const geo=roadGeometry();document.querySelectorAll('[data-gantry]').forEach(b=>{const lane=b.dataset.lane,x=GANTRIES[+b.dataset.gantry],left=geo.leftAt(x);b.style.left=(lane==='all'?left-51:left+(+lane)*geo.laneWidth)+'px';b.style.width=(lane==='all'?42:geo.laneWidth)+'px';const gy=geo.project(x);b.hidden=gy<20||gy>canvas.clientHeight-20;b.style.top=gy+'px'});if(!editor.hidden)positionEditor()}
+function positionTargets(){const geo=roadGeometry();document.querySelectorAll('[data-gantry]').forEach(b=>{const lane=b.dataset.lane,x=GANTRIES[+b.dataset.gantry],left=geo.leftAt(x);b.style.left=(lane==='all'?left-51:left+(+lane)*geo.laneWidth)+'px';b.style.width=(lane==='all'?42:geo.laneWidth)+'px';const gy=geo.project(x);b.hidden=gy<20||gy>canvas.clientHeight-20;b.style.top=gy+'px'});if(!editor.hidden)positionEditor();positionJunctions()}
 function positionEditor(){const geo=roadGeometry(),h=geo.height;const gy=geo.project(GANTRIES[selected]),eh=editor.offsetHeight;editor.style.top=Math.max(8,Math.min(h-eh-40,gy+(gy<h/2?27:-eh-27)))+'px'}
 $('#gantryTargets').innerHTML=GANTRIES.map((g,i)=>['all',0,1,2].map(l=>`<button class="road-sign-target ${l==='all'?'gantry-side':''}" data-gantry="${i}" data-lane="${l}" aria-label="Gantry 0${i+1} ${l==='all'?'all lanes':'lane '+(+l+1)}" aria-expanded="false" aria-controls="inlineSignals">${l==='all'?`G0${i+1}<small>ALL</small>`:''}</button>`).join('')).join('');
 function renderEditor(){
@@ -20,7 +23,7 @@ function renderEditor(){
  $('#inlineModes').innerHTML=modes.map(([mode,label])=>`<button data-mode="${mode}" aria-pressed="${signals.every(s=>s.mode===mode)}">${label}</button>`).join('');
  updateInlineReading();positionEditor();
 }
-$('#gantryTargets').onclick=e=>{const b=e.target.closest('[data-gantry]');if(!b)return;if(detailArmed){selected=+b.dataset.gantry;openDetail(GANTRIES[selected]);return;}closeEditor();editorOpener=b;selected=+b.dataset.gantry;laneScope=b.dataset.lane;editor.hidden=false;b.setAttribute('aria-expanded','true');renderEditor()};
+$('#gantryTargets').onclick=e=>{const b=e.target.closest('[data-gantry]');if(!b)return;closeRamp();if(detailArmed){selected=+b.dataset.gantry;openDetail(GANTRIES[selected]);return;}closeEditor();editorOpener=b;selected=+b.dataset.gantry;laneScope=b.dataset.lane;editor.hidden=false;b.setAttribute('aria-expanded','true');renderEditor()};
 $('#inlineSpeeds').onclick=e=>{const b=e.target.closest('[data-speed]');if(!b)return;const lanes=laneScope==='all'?[0,1,2]:[+laneScope];lanes.forEach(l=>sim.signals[selected][l].speed=+b.dataset.speed);renderEditor()};
 $('#inlineModes').onclick=e=>{const b=e.target.closest('[data-mode]');if(!b)return;(laneScope==='all'?[0,1,2]:[+laneScope]).forEach(l=>sim.signals[selected][l].mode=b.dataset.mode==='merge-left'&&l===0||b.dataset.mode==='merge-right'&&l===2?'open':b.dataset.mode);renderEditor()};
 $('#closeInline').onclick=closeEditor;
@@ -31,7 +34,7 @@ $('.mapwrap').addEventListener('click',e=>{
   const world=viewStart+((VIEW_LENGTH===LENGTH?geo.height+24:geo.height-46)-(e.clientY-rect.top))/geo.scale;
   openDetail(world);return;
  }
- if(!e.target.closest('#inlineSignals')&&!e.target.closest('[data-gantry]'))closeEditor();
+ if(!e.target.closest('#inlineSignals')&&!e.target.closest('[data-gantry]'))closeEditor();if(!e.target.closest('#rampControls')&&!e.target.closest('[data-ramp]'))closeRamp();
 });
 function updateDetailNavigation(){
  $('#detailNavigation').hidden=VIEW_LENGTH===LENGTH;
@@ -40,15 +43,15 @@ function updateDetailNavigation(){
 }
 function openDetail(x){
  detailArmed=false;$('#zoomPrompt').hidden=true;VIEW_LENGTH=400;viewStart=Math.max(0,Math.min(LENGTH-400,x-200));
- $('#viewMode').textContent='Show all';$('#viewMode').setAttribute('aria-pressed','true');closeEditor();positionTargets();updateDetailNavigation();
+ $('#viewMode').textContent='Show all';$('#viewMode').setAttribute('aria-pressed','true');closeEditor();closeRamp();positionTargets();updateDetailNavigation();
 }
-function showAll(){detailArmed=false;VIEW_LENGTH=LENGTH;viewStart=0;$('#zoomPrompt').hidden=true;$('#viewMode').textContent='Detail';$('#viewMode').setAttribute('aria-pressed','false');closeEditor();positionTargets();updateDetailNavigation();}
-$('#viewMode').onclick=()=>{
+function showAll(){detailArmed=false;VIEW_LENGTH=LENGTH;viewStart=0;$('#zoomPrompt').hidden=true;$('#viewMode').textContent='Detail';$('#viewMode').setAttribute('aria-pressed','false');closeEditor();closeRamp();positionTargets();updateDetailNavigation();}
+$('#viewMode').onclick=()=>{closeRamp();
  if(VIEW_LENGTH!==LENGTH){showAll();return;}
  detailArmed=!detailArmed;closeEditor();$('#zoomPrompt').hidden=!detailArmed;$('#viewMode').textContent=detailArmed?'Cancel zoom':'Detail';$('#viewMode').setAttribute('aria-pressed',String(detailArmed));
 };
-$('#detailPrevious').onclick=()=>{viewStart=Math.max(0,viewStart-400);closeEditor();positionTargets();updateDetailNavigation()};
-$('#detailNext').onclick=()=>{viewStart=Math.min(LENGTH-400,viewStart+400);closeEditor();positionTargets();updateDetailNavigation()};
+$('#detailPrevious').onclick=()=>{viewStart=Math.max(0,viewStart-400);closeEditor();closeRamp();positionTargets();updateDetailNavigation()};
+$('#detailNext').onclick=()=>{viewStart=Math.min(LENGTH-400,viewStart+400);closeEditor();closeRamp();positionTargets();updateDetailNavigation()};
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(detailArmed)showAll();else closeEditor()}});
 new ResizeObserver(positionTargets).observe(canvas);positionTargets();updateDetailNavigation();
 function updateTrafficDesk(){
@@ -65,6 +68,34 @@ $('#applyAdvice').onclick=()=>{
  if(advice.gantry>0)sim.signals[advice.gantry-1].forEach(s=>{if(s.mode==='open')s.speed=Math.min(s.speed,advice.targetSpeed+10)});
  notify(`Approach limits set before ${(advice.tail/1000).toFixed(2)} km. Watch braking and flow, and raise limits when the queue clears.`);updateTrafficDesk();if(!editor.hidden)renderEditor();
 };
+function positionJunctions(){
+ const geo=roadGeometry();document.querySelectorAll('[data-ramp]').forEach(b=>{const r=operations.ramps[+b.dataset.ramp],y=geo.project(r.x);b.hidden=y<20||y>geo.height-30;b.style.left=Math.max(3,geo.leftAt(r.x)-73)+'px';b.style.top=y+'px'});
+ if(activeRamp!=null){const r=operations.ramps[activeRamp];$('#rampControls').style.top=Math.max(8,Math.min(geo.height-190,geo.project(r.x)+28))+'px';}
+}
+$('#rampTargets').innerHTML=operations.ramps.map(r=>'<button class="ramp-target" data-ramp="'+r.id+'" aria-label="'+r.name+' ramp signals">'+r.name+'<span id="rampLight'+r.id+'">●</span></button>').join('');
+$('#rampTargets').onclick=e=>{const b=e.target.closest('[data-ramp]');if(!b)return;if(detailArmed){openDetail(operations.ramps[+b.dataset.ramp].x);return;}closeEditor();activeRamp=+b.dataset.ramp;$('#rampControls').hidden=false;updateRampEditor();positionJunctions()};
+$('#rampControls').addEventListener('click',e=>e.stopPropagation());
+$('#closeRamp').onclick=closeRamp;
+$('#rampControls').onclick=e=>{const b=e.target.closest('[data-ramp-choice]');if(b&&activeRamp!=null){operations.setRampMode(activeRamp,b.dataset.rampChoice);updateRampEditor();updateOperations()}};
+function updateRampEditor(){if(activeRamp==null)return;const r=operations.ramps[activeRamp];$('#rampTitle').textContent=r.name+' · ramp signals';$('#rampReading').textContent=r.queue.length+' vehicles waiting · '+r.joined+' joined';document.querySelectorAll('[data-ramp-choice]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.rampChoice===r.mode)))}
+$('#rampsList').innerHTML=operations.ramps.map(r=>'<div class="ramp-row"><div><b>'+r.name+' · '+(r.x/1000).toFixed(1)+' km</b><small id="rampQueue'+r.id+'">0 waiting</small></div><select data-ramp-mode="'+r.id+'" aria-label="'+r.name+' ramp signal"><option value="auto">Auto</option><option value="green">Green</option><option value="red">Red</option></select></div>').join('');
+$('#rampsList').onchange=e=>{if(e.target.dataset.rampMode!=null){operations.setRampMode(+e.target.dataset.rampMode,e.target.value);updateRampEditor()}};
+$('#protectWorks').onclick=()=>{operations.protectWorks();updateOperations()};
+$('#objectiveList').innerHTML=operations.objectives.map(o=>'<div class="objective"><label for="goal-'+o.id+'">'+o.title+'</label><progress id="goal-'+o.id+'" max="'+o.target+'" value="0"></progress><small id="goalReading-'+o.id+'">0 / '+o.target+'</small></div>').join('');
+function updateOperations(){
+ const phase=operations.phase,w=operations.work,b=operations.roadblock;
+ $('#networkNotice').textContent=phase.name+' · '+(w.status==='safety-paused'?'Roadwork protection missing':b.status==='rolling'||b.status==='clearing'?'Police hold active':w.status==='working'?'Road crews working':w.status==='awaiting-protection'?'Roadworks waiting for your protection':'3 junctions online');
+ for(const r of operations.ramps){$('#rampQueue'+r.id).textContent=r.queue.length+' waiting · '+r.joined+' joined';$('#rampLight'+r.id).style.color=r.mode==='red'||!r.green?'#f69b7b':'#c5ed7c';const select=document.querySelector('[data-ramp-mode="'+r.id+'"]');if(select.value!==r.mode)select.value=r.mode;}
+ $('#networkNotice').classList.toggle('urgent',w.status==='awaiting-protection'||w.status==='safety-paused');
+ const g=operations.protectionGantry();
+ $('#workReading').textContent=w.status==='complete'?'Work complete. Reopen the protected lanes when ready.':w.status==='working'?'Crews working at '+(w.x/1000).toFixed(1)+' km · '+Math.ceil(w.remaining/3)+'s at 1× remaining.':w.status==='safety-paused'?'Workers withdrawn: restore the closure at G0'+(g+1)+' to resume.':'Work planned at '+(w.x/1000).toFixed(1)+' km. Close lane'+(w.lanes.length>1?'s ':' ')+w.lanes.map(l=>l+1).join(' & ')+' at G0'+(g+1)+' before crews enter.';
+ $('#protectWorks').disabled=w.status==='complete';
+ $('#policeReading').textContent=b.status==='scheduled'?'A rolling hold is scheduled to create space for a debris team.':b.status==='rolling'?'Police are holding traffic at about 20 mph to open a safe work gap.':b.status==='clearing'?'The debris team is clearing the gap. Police will release traffic automatically.':'Clearance complete. The police convoy has released traffic.';
+ let complete=0;for(const o of operations.objectives){$('#goal-'+o.id).value=o.progress;$('#goalReading-'+o.id).textContent=o.complete?'✓ Complete':o.progress+' / '+o.target;if(o.complete)complete++;}$('#objectiveCount').textContent=complete+'/'+operations.objectives.length;
+ updateRampEditor();positionJunctions();
+}
+new ResizeObserver(positionJunctions).observe(canvas);updateOperations();
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeRamp()});
 function updateResponseStatus(){const responders=sim.cars.filter(c=>c.emergency&&c.x>=0&&c.x<LENGTH).sort((a,b)=>b.v-a.v);$('#responseStatus').textContent=responders.length?(responders[0].kind==='police'?'Police':'Ambulance')+' · '+Math.round(responders[0].v/.44704)+' mph':'Network connected'}
 function updateInlineReading(){if(editor.hidden)return;const cars=sim.cars.filter(c=>c.x>=GANTRIES[selected]&&c.x<(GANTRIES[selected+1]??LENGTH)&&(laneScope==='all'?c.lane>=0:c.lane===+laneScope));$('#inlineActual').textContent=cars.length?'Actual '+Math.round(cars.reduce((n,c)=>n+c.v,0)/cars.length/.44704)+' mph · changes apply downstream':'No traffic in this section'}
 $('#pause').onclick=()=>{paused=!paused;$('#pause').textContent=paused?'▶':'❚❚';$('#pause').setAttribute('aria-label',paused?'Resume simulation':'Pause simulation')};
@@ -89,32 +120,39 @@ function draw(){
  for(let m=Math.ceil(viewStart/tick)*tick;m<=viewStart+VIEW_LENGTH;m+=tick){const left=geo.leftAt(m);ctx.fillText((m/1000).toFixed(1)+' km',left-17,y(m));ctx.fillRect(left-12,y(m),7,1)}
  ctx.save();ctx.translate(w-15,h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#79968c';ctx.font='9px sans-serif';ctx.fillText('NORTHBOUND  →',-45,0);ctx.restore();
 // Keep every vehicle symbol fixed in size; no numbered queue overlays.
+for(const r of operations.ramps){
+ const rx=geo.laneX(r.x,0),ry=y(r.x);if(ry<-100||ry>h+100)continue;
+ ctx.beginPath();ctx.moveTo(-20,ry+90);ctx.bezierCurveTo(rx-80,ry+65,rx-30,ry+25,rx,ry);ctx.strokeStyle='#789187';ctx.lineWidth=12;ctx.stroke();ctx.strokeStyle='#30494a';ctx.lineWidth=9;ctx.stroke();
+ r.queue.forEach((c,i)=>{const t=c.rampApproach??1,targetX=rx-50-i*5,targetY=ry+24+i*7;ctx.fillStyle=c.truck?'#e7dfb5':'#bdd4c3';ctx.fillRect(-20+(targetX+20)*t,ry+90+(targetY-ry-90)*t,4,c.truck?5:3)});
+}
+const work=operations.work;
+if(work.status!=='complete'&&sim.elapsed>=work.announceAt){const wy=y(work.x),wx=geo.leftAt(work.x);ctx.fillStyle='#e1bd73';ctx.font='8px sans-serif';ctx.textAlign='left';ctx.fillText('ROADWORKS '+(work.status==='working'?'ACTIVE':'DUE'),wx+geo.roadWidth+10,wy-13);}
 const incidentLabels=[],incidentMarkers=[];
 for(const c of placeSprites(sim.cars,sim.incidents,{left:geo.leftAt(0),laneWidth:lw,project:y,overview:VIEW_LENGTH===LENGTH,laneX:geo.laneX,angleAt:geo.angleAt})){
  const {cx,cy,width}=c;const height=c.designHeight;
  if(cy+c.height<0||cy>h)continue;
  ctx.save();ctx.translate(cx,cy);ctx.rotate(c.angle);ctx.scale(1,c.height/height);ctx.translate(-cx,-cy);
- ctx.fillStyle=c.static?'#ef9476':c.kind==='police'?'#f2f2dd':c.kind==='ambulance'?'#edee75':c.kind==='recovery'?'#f5b85a':c.truck?'#e7dfb5':c.braking?'#e7b66f':['#c6ddd1','#7ba9ad','#a9c998','#d9e2d5'][c.id%4];
+ ctx.fillStyle=c.static?'#ef9476':c.kind==='police'||c.kind==='roadblock'?'#f2f2dd':c.kind==='ambulance'?'#edee75':c.kind==='recovery'?'#f5b85a':c.truck?'#e7dfb5':c.braking?'#e7b66f':['#c6ddd1','#7ba9ad','#a9c998','#d9e2d5'][c.id%4];
  ctx.beginPath();ctx.roundRect(cx-width/2,cy,width,height,1);ctx.fill();ctx.fillStyle='#385a63';ctx.fillRect(cx-width/2+.6,cy+1,width-1.2,2);
- if(c.kind==='ambulance'||c.kind==='police'){ctx.fillStyle='#76a85c';ctx.fillRect(cx-width/2,cy+4,width,2);ctx.fillStyle=Math.floor(sim.elapsed*7)%2?'#45c5ff':'#e5faff';ctx.fillRect(cx-width/2-1,cy+2,3,2);ctx.fillRect(cx+width/2-2,cy+2,3,2)}
+ if(c.kind==='ambulance'||c.kind==='police'||c.kind==='roadblock'){ctx.fillStyle='#76a85c';ctx.fillRect(cx-width/2,cy+4,width,2);ctx.fillStyle=Math.floor(sim.elapsed*7)%2?'#45c5ff':'#e5faff';ctx.fillRect(cx-width/2-1,cy+2,3,2);ctx.fillRect(cx+width/2-2,cy+2,3,2)}
  if(c.kind==='recovery'){ctx.fillStyle='#fff3ab';ctx.fillRect(cx-4,cy+3,8,2);if(c.towing){ctx.fillStyle='#df8d72';ctx.fillRect(cx-2.5,cy+12,5,7)}}
  if(c.truck){ctx.fillStyle='#8c9571';ctx.fillRect(cx-width/2+1,cy+5,width-2,1)}
  if(c.static){if(Math.floor(sim.elapsed*2)%2===0){ctx.fillStyle='#ffd076';ctx.fillRect(cx-4,cy+height-2,2,2);ctx.fillRect(cx+2,cy+height-2,2,2)}
  }
- if(c.emergency&&c.height<3){ctx.fillStyle=Math.floor(sim.elapsed*7)%2?'#45c5ff':'#f2fcff';ctx.fillRect(cx-width/2,cy,width,height);}
+ if((c.emergency||c.blocker)&&c.height<3){ctx.fillStyle=Math.floor(sim.elapsed*7)%2?'#45c5ff':'#f2fcff';ctx.fillRect(cx-width/2,cy,width,height);}
  ctx.restore();
- if(c.static){incidentMarkers.push(c);if(c.type==='shed-load'){ctx.fillStyle='#e7ad60';ctx.fillRect(cx-4,cy-2,3,3);ctx.fillRect(cx+1,cy+2,3,3);}if(!c.bodyIndex)incidentLabels.push(c);}
+ if(c.static){if(c.type==='roadworks'){ctx.fillStyle='#ffb76a';for(let k=0;k<5;k++){const py=cy+k*c.height/5;ctx.beginPath();ctx.moveTo(cx-9,py);ctx.lineTo(cx-12,py+4);ctx.lineTo(cx-6,py+4);ctx.closePath();ctx.fill();}if(c.status!=='workers-withdrawn'){ctx.fillStyle='#e6ef88';ctx.fillRect(cx+6,cy+c.height/2,3,4);}}incidentMarkers.push(c);if(c.type==='shed-load'){ctx.fillStyle='#e7ad60';ctx.fillRect(cx-4,cy-2,3,3);ctx.fillRect(cx+1,cy+2,3,3);}if(!c.bodyIndex)incidentLabels.push(c);}
 }
-GANTRIES.forEach((g,gi)=>{const gy=y(g),left=geo.leftAt(g);if(gy<20||gy>h-20)return;ctx.fillStyle=gi===selected?'#bbdf86':'#6e8880';ctx.fillRect(left-12,gy,roadW+24,3);ctx.fillRect(left-12,gy,3,16);ctx.fillRect(left+roadW+9,gy,3,16);ctx.textAlign='left';ctx.font='bold 9px sans-serif';sim.signals[gi].forEach((s,l)=>{const x=left+(l+.5)*lw;ctx.fillStyle='#101e24';ctx.fillRect(x-14,gy-14,28,25);ctx.textAlign='center';ctx.font='bold 13px sans-serif';ctx.fillStyle=s.mode==='closed'?'#ff7768':s.mode==='merge'?'#efc676':'#e4ecdf';ctx.fillText(s.mode==='closed'?'×':s.mode.startsWith('merge')?(s.mode==='merge-left'||(s.mode==='merge'&&l===2)?'↖':'↗'):s.speed,x,gy+3);if(s.mode==='open'){ctx.strokeStyle='#e57869';ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(x,gy-2,10,0,Math.PI*2);ctx.stroke()}})});for(const c of incidentLabels){
+GANTRIES.forEach((g,gi)=>{const gy=y(g),left=geo.leftAt(g);if(gy<20||gy>h-20)return;ctx.fillStyle=gi===selected?'#bbdf86':'#6e8880';ctx.fillRect(left-12,gy,roadW+24,3);ctx.fillRect(left-12,gy,3,16);ctx.fillRect(left+roadW+9,gy,3,16);ctx.textAlign='left';ctx.font='bold 9px sans-serif';sim.signals[gi].forEach((s,l)=>{const x=left+(l+.5)*lw;ctx.fillStyle='#101e24';ctx.fillRect(x-14,gy-14,28,25);ctx.textAlign='center';ctx.font='bold 13px sans-serif';ctx.fillStyle=s.mode==='closed'?'#ff7768':s.mode==='merge'?'#efc676':'#e4ecdf';if(s.mode.startsWith('merge')){const dir=s.mode==='merge-left'||(s.mode==='merge'&&l===2)?-1:1;ctx.strokeStyle='#f1cc72';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x-dir*4,gy+5);ctx.lineTo(x+dir*5,gy-5);ctx.stroke();ctx.beginPath();ctx.moveTo(x+dir*5-dir*6,gy-5);ctx.lineTo(x+dir*5,gy-5);ctx.lineTo(x+dir*5,gy+1);ctx.stroke();}else ctx.fillText(s.mode==='closed'?'×':s.speed,x,gy+3);if(s.mode==='open'){ctx.strokeStyle='#e57869';ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(x,gy-2,10,0,Math.PI*2);ctx.stroke()}})});for(const c of incidentLabels){
  let labelY=c.cy;
  for(const g of GANTRIES){const gy=y(g);if(Math.abs(labelY-gy)<32)labelY=gy+36;}
  labelY=Math.max(12,Math.min(h-75,labelY));
  const labelX=geo.leftAt(c.x)+roadW+12;
  ctx.strokeStyle='#ffab85';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(c.cx+5,c.cy+3);ctx.lineTo(labelX-3,labelY+3);ctx.stroke();
- ctx.fillStyle='#ffb291';ctx.font='bold 8px sans-serif';ctx.textAlign='left';ctx.fillText(c.type==='breakdown'?'BREAKDOWN':c.type==='debris'?'DEBRIS':c.type==='shed-load'?'SHED LOAD':c.type==='pile-up'?'PILE-UP':'COLLISION',labelX,labelY);
+ ctx.fillStyle='#ffb291';ctx.font='bold 8px sans-serif';ctx.textAlign='left';ctx.fillText(c.type==='breakdown'?'BREAKDOWN':c.type==='debris'?'DEBRIS':c.type==='shed-load'?'SHED LOAD':c.type==='pile-up'?'PILE-UP':c.type==='roadworks'?'ROADWORKS':c.type==='police-clearance'?'POLICE HOLD':'COLLISION',labelX,labelY);
  ctx.font='8px sans-serif';ctx.fillText(c.lanes?'LANES '+c.lanes.map(l=>l+1).join('&'):'LANE '+(c.lane+1),labelX,labelY+12);
- ctx.fillStyle='#e1c4a3';ctx.font='7px sans-serif';ctx.fillText(c.status==='recovering'?'LOADING':c.status==='recovery-en-route'?'TOW COMING':c.status==='awaiting-recovery'?'TOW CALLED':'CREWS HERE',labelX,labelY+24);
+ ctx.fillStyle='#e1c4a3';ctx.font='7px sans-serif';ctx.fillText(c.status==='recovering'?'LOADING':c.status==='recovery-en-route'?'TOW COMING':c.status==='awaiting-recovery'?'TOW CALLED':c.status==='workers-withdrawn'?'WORK PAUSED':'CREWS HERE',labelX,labelY+24);
 }
 for(const c of incidentMarkers){ctx.strokeStyle='#ffab85';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(c.cx,c.cy+3,7,0,Math.PI*2);ctx.stroke();}
 ctx.textAlign='center';ctx.fillStyle='#93b29e';ctx.font='9px sans-serif';ctx.fillText('↑     ↑     ↑',w/2,h-18)}
-let last=performance.now(),accumulator=0,seenEvent=0;function frame(now){const delta=Math.min((now-last)/1000,.15);last=now;if(!paused){accumulator+=delta*rate*3;while(accumulator>=.1){sim.step(.1);accumulator-=.1}}if(sim.eventId!==seenEvent){seenEvent=sim.eventId;notify(sim.lastEvent)}draw();updateInlineReading();updateResponseStatus();if(now-lastDeskUpdate>500){updateTrafficDesk();lastDeskUpdate=now;}updateSiren();$('#flow').innerHTML=`${sim.exits.length*60} <small>veh/h</small>`;$('#speed').innerHTML=`${Math.round(sim.cars.reduce((a,c)=>a+c.v,0)/Math.max(1,sim.cars.length)/.44704)} <small>mph</small>`;$('#vehicles').textContent=sim.cars.length;$('#queue').textContent=`${sim.waiting} waiting at entry`;const minutes=480+Math.floor(sim.elapsed/60);$('#time').textContent=`${String(Math.floor(minutes/60)%24).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`;requestAnimationFrame(frame)}requestAnimationFrame(frame);
+let last=performance.now(),accumulator=0,seenEvent=0;function frame(now){const delta=Math.min((now-last)/1000,.15);last=now;if(!paused){accumulator+=delta*rate*3;while(accumulator>=.1){sim.step(.1);accumulator-=.1}}if(sim.eventId!==seenEvent){seenEvent=sim.eventId;notify(sim.lastEvent)}draw();updateInlineReading();updateResponseStatus();if(now-lastDeskUpdate>500){updateTrafficDesk();updateOperations();lastDeskUpdate=now;}updateSiren();$('#flow').innerHTML=`${sim.exits.length*60} <small>veh/h</small>`;$('#speed').innerHTML=`${Math.round(sim.cars.reduce((a,c)=>a+c.v,0)/Math.max(1,sim.cars.length)/.44704)} <small>mph</small>`;$('#vehicles').textContent=sim.cars.length;$('#queue').textContent=`${sim.waiting} waiting at entry`;const minutes=480+Math.floor(sim.elapsed/60);$('#time').textContent=`${String(Math.floor(minutes/60)%24).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`;requestAnimationFrame(frame)}requestAnimationFrame(frame);

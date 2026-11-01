@@ -1,3 +1,4 @@
+import {NetworkSystems} from './systems.js';
 export const LENGTH = 10000;
 export const GANTRIES = [450, 1550, 2650, 3750, 4850, 6450, 8050];
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
@@ -14,6 +15,7 @@ export class Simulation {
     this.hardBrakeEvents=[];
     this.incidentZones=[];
     this.incidentId = 0; this.nextEmergency = 20 + random() * 25;
+    this.systemsEnabled=true;this.systems=new NetworkSystems(this,{length:LENGTH,gantries:GANTRIES});
     // Stagger each lane independently; most traffic starts in the running lane.
     for (let lane = 0; lane < 3; lane++) {
       for (let x = 100 + random() * 120; x < LENGTH; x += [155, 330, 780][lane] + random() * 140) {
@@ -35,6 +37,7 @@ export class Simulation {
       cooldown: this.random() * 4, decision: this.random(),
       restart: 0, a: 0, braking: false,
     };
+    if(kind==='roadblock'){car.desired=9;car.acceleration=.8;}
     if(car.emergency){car.desired=(kind==='police'?110:100)*.44704;car.acceleration=3;car.headway=1.1;car.reaction=.35;car.courtesy=1;car.cooldown=0;car.decision=0;}
     if(kind==='recovery'){car.desired=24;car.acceleration=.8;}
     car.v = Math.min(v, car.desired);
@@ -74,6 +77,7 @@ export class Simulation {
     for (let g = 0; g < GANTRIES.length; g++) if (lane>=0 && this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
       pos = Math.max(car.x, GANTRIES[g] - 8); speed = 0;
     }
+    if(car.blocker&&this.systemsEnabled&&['rolling','clearing'].includes(this.systems.roadblock.status)){const hold=this.systems.roadblock.x-this.systems.roadblock.length-100;if(car.x<hold&&hold<pos){pos=hold;speed=0;}}
     return { gap: Math.max(.1, pos - car.x), speed };
   }
   incidentWindows(){
@@ -101,7 +105,7 @@ export class Simulation {
     }
     if (type === 'breakdown') lane = 0;
     // Use an actual vehicle where possible, preserving its position and appearance.
-    const vehicle = this.cars.filter(c => c.lane === lane && c.v > 10 && !c.kind && Math.abs(c.visualLane-c.lane)<.02 && Math.abs(c.x-x)<350 && this.incidentPositionAllowed(c.x))
+    const vehicle = this.cars.filter(c => c.lane === lane && c.v > 10 && !c.kind && c.onRamp==null && Math.abs(c.visualLane-c.lane)<.02 && Math.abs(c.x-x)<350 && this.incidentPositionAllowed(c.x))
       .sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
     if(options.requireVehicle&&!vehicle)return null;
     if(!vehicle&&this.cars.some(c=>this.occupiedLanes(c).includes(lane)&&Math.abs(c.x-x)<40))return null;
@@ -133,7 +137,7 @@ export class Simulation {
     let bodies=[],victims=[];
     if(type==='pile-up'){
       for(const lane of lanes){
-        const car=this.cars.filter(c=>c.lane===lane&&!c.kind&&Math.abs(c.visualLane-c.lane)<.02&&Math.abs(c.x-x)<180&&this.incidentPositionAllowed(c.x)).sort((a,b)=>Math.abs(a.x-x)-Math.abs(b.x-x))[0];
+        const car=this.cars.filter(c=>c.lane===lane&&!c.kind&&c.onRamp==null&&Math.abs(c.visualLane-c.lane)<.02&&Math.abs(c.x-x)<180&&this.incidentPositionAllowed(c.x)).sort((a,b)=>Math.abs(a.x-x)-Math.abs(b.x-x))[0];
         if(!car)return null;victims.push(car);bodies.push({lane,x:car.x,length:car.length,truck:car.truck,vehicleId:car.id});
       }
     }else{
@@ -215,6 +219,7 @@ export class Simulation {
   }
   step(dt) {
     this.elapsed += dt;
+    if(this.systemsEnabled)this.systems.beforeStep(dt);
     this.manageRecovery(dt);
     if(this.elapsed>=this.nextEmergency){
       const lane=2;
@@ -240,7 +245,7 @@ export class Simulation {
       }
       this.nextIncident = this.elapsed + 110 + this.random() * 130;
     }
-    const demand = { commute: .48, busy: 1.05, incident: .65, rain: .55, reckless: .65 }[this.scenario];
+    const demand = { commute: .48, busy: 1.05, incident: .65, rain: .55, reckless: .65 }[this.scenario]*(this.systemsEnabled ? .75*this.systems.phase.multiplier : 1);
     this.nextArrival -= dt;
     while (this.nextArrival <= 0) {
       this.waiting++;
@@ -259,7 +264,7 @@ export class Simulation {
     // makes followers react instantly and produces artificial synchronised motion.
     const snapshot = this.cars.map(c => ({ ...c }));
     for (const c of this.cars) {
-      if(c.recovering!=null||c.lane<0)continue;
+      if(c.recovering!=null||c.lane<0||c.onRamp!=null||c.blocker)continue;
       c.cooldown -= dt; c.decision -= dt;
       const sig = this.signalAt(c.x, c.lane);
       let front = this.obstacle(c, c.lane, snapshot);
@@ -342,6 +347,7 @@ export class Simulation {
     }
     const movementSnapshot=this.cars.map(c=>({...c}));
     for(const c of this.cars){
+      if(c.onRamp!=null){c.rampProgress=Math.min(1,c.rampProgress+dt/3);if(c.rampProgress>=1)c.onRamp=null;}
       if(c.recovering!=null){c.v=0;continue;}
       if(c.lane<0){
         const front=this.obstacle(c,c.lane,movementSnapshot);
@@ -384,9 +390,10 @@ export class Simulation {
     }
     this.enforceSeparation();
     this.cars = this.cars.filter(c => {
-      if (c.x > LENGTH) { this.exits.push(this.elapsed); return false; } return true;
+      if (c.x > LENGTH) { this.exits.push(this.elapsed);if(this.systemsEnabled)this.systems.recordExit(c); return false; } return true;
     });
     this.exits = this.exits.filter(t => t > this.elapsed - 60);
     this.hardBrakeEvents=this.hardBrakeEvents.filter(t=>t>this.elapsed-60);
+    if(this.systemsEnabled)this.systems.afterStep();
   }
 }

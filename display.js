@@ -8,7 +8,9 @@ export function layoutSprites(cars, incidents, {left,laneWidth,project,overview=
   const designHeight=c.towing||c.kind==='recovery'?20:c.truck?13:c.kind==='ambulance'?10:6;
   const length=c.length??(c.kind==='recovery'?16:c.truck?16.5:c.kind==='ambulance'?7:4.7);
   const height=overview?length*scale:designHeight;
-  return {...c,cx:laneX?laneX(c.x,c.lane<0?-1:c.visualLane):c.lane<0?left-10:left+(c.visualLane+.5)*laneWidth,cy:project(c.x),width,height,nominalHeight:height,designHeight,angle:angleAt?(overview?Math.max(-.02,Math.min(.02,angleAt(c.x))):angleAt(c.x)):0,visible:true};
+  const joining=c.onRamp!=null?1-(c.rampProgress??0):0;
+  const cx=(laneX?laneX(c.x,c.lane<0?-1:c.visualLane):c.lane<0?left-10:left+(c.visualLane+.5)*laneWidth)-50*joining;
+  return {...c,cx,cy:project(c.x)+24*joining,width,height,nominalHeight:height,designHeight,angle:angleAt?(overview?Math.max(-.02,Math.min(.02,angleAt(c.x))):angleAt(c.x)):0,visible:true};
  }).sort((a,b)=>a.cy-b.cy);
 }
 export function createSpriteLayout(){return layoutSprites;}

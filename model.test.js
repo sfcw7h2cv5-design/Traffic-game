@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Simulation, LENGTH, GANTRIES } from './model.js';
 function seeded(seed = 42) { let n = seed; return () => ((n = (n * 1664525 + 1013904223) >>> 0) / 4294967296); }
-function quiet(s) { s.nextIncident = Infinity; s.nextEmergency = Infinity; s.nextArrival = Infinity; s.waiting = 0; }
+function quiet(s) { s.systemsEnabled=false; s.nextIncident = Infinity; s.nextEmergency = Infinity; s.nextArrival = Infinity; s.waiting = 0; }
 function run(s, seconds) { for (let i = 0; i < seconds * 10; i++) s.step(.1); }
 test('free traffic keeps left, with identifiable HGVs and sparse overtaking lanes', () => {
  const s = new Simulation(seeded()); quiet(s);
@@ -104,7 +104,7 @@ test('traffic yields left for an approaching emergency vehicle when there is a g
 });
 test('dense traffic never overlaps, including lane-change reservations and incidents',()=>{
  for(const seed of [42,77,192]){
-  const s=new Simulation(seeded(seed));s.scenario='busy';s.nextEmergency=0;
+  const s=new Simulation(seeded(seed));s.scenario='busy';s.nextEmergency=0;s.systemsEnabled=false;
   s.addIncident(0,2400,'breakdown');
   for(let n=0;n<3000;n++){
    if(n===900)s.signals[2][1].mode='closed';

@@ -31,3 +31,17 @@ The scenario menu has been replaced by live traffic advice. The desk locates the
 Detail now arms a location picker: tap a gantry or road point to choose the close-up, then navigate upstream/downstream or return with Show all. It no longer silently picks the last-used/default gantry.
 
 Courtesy yielding is assigned only to the nearest suitable rear neighbour of a waiting merger. Cars already alongside continue, and no gap request is made when the target lane has no space ahead. A transitioning vehicle stops reserving its original lane when its body has cleared the lane boundary, rather than waiting until the whole animation has settled.
+
+## Network operations and optional shift goals
+
+Three real slip roads join at J1 (1.2 km), J2 (5.9 km) and J3 (9.0 km). Tap a junction on the map for Auto/Green/Red ramp metering, or open **Network operations** beneath the traffic desk. Waiting vehicles are animated on the slip roads and join through checked front and rear gaps. Even Green cannot release into a vehicle or a closed approach. Auto adapts release spacing to mainline congestion.
+
+Demand automatically cycles through normal traffic, morning rush, easing traffic and stadium departures. Both upstream arrivals and junction demand change; the current phase is visible above the map.
+
+Roadworks are announced in advance. Use the suggested protection button or set the lane closures manually. Crews only enter after the protected zone is empty. Removing protection withdraws the workers and pauses the work timer; cones remain. Completed works clear automatically, but operators reopen their own signals. Later work plans can close two lanes.
+
+A scheduled police rolling hold uses three moving police vehicles at about 20 mph to create an empty gap for a debris team. The convoy waits upstream until clearance completes, then releases and accelerates away. Ordinary vehicle collision rules still apply.
+
+**Optional shift goals** track serving 100 vehicles, getting an ambulance through, clearing a queue of at least five stopped vehicles, and completing protected roadworks. Goals never fail or stop the simulation; completed badges remain earned. There is no game-over state.
+
+The controls remain usable without opening the collapsible panels: tap signs for lane control and J1–J3 for ramp signals. The model's systemsEnabled switch isolates scheduled operations in focused traffic tests; dedicated systems tests cover combined operation safety.

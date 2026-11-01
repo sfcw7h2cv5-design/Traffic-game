@@ -32,7 +32,7 @@ test('live fixed-size traffic stays separated through incidents and recovery',as
  const sim=new Simulation(()=>((n=(n*1664525+1013904223)>>>0)/4294967296));const layout=createSpriteLayout();
  const sizes=new Map();
  for(let step=0;step<900;step++){
-  sim.step(.1);const sprites=layout(sim.cars,sim.incidents,options);separated(sprites);
+  sim.systemsEnabled=false;sim.step(.1);const sprites=layout(sim.cars,sim.incidents,options);separated(sprites);
   for(const c of sprites.filter(c=>!c.static)){
    if(sizes.has(c.id))assert.deepEqual([c.width,c.height],sizes.get(c.id));
    sizes.set(c.id,[c.width,c.height]);assert.equal(c.cy,options.project(c.x));
@@ -42,7 +42,7 @@ test('live fixed-size traffic stays separated through incidents and recovery',as
 test('visible lane positions follow the model through crowded closure merges',async()=>{
  const {Simulation}=await import('./model.js');let n=42;
  const sim=new Simulation(()=>((n=(n*1664525+1013904223)>>>0)/4294967296));
- sim.nextIncident=sim.nextEmergency=Infinity;sim.signals[1][0].mode='closed';let changes=0;
+ sim.systemsEnabled=false;sim.nextIncident=sim.nextEmergency=Infinity;sim.signals[1][0].mode='closed';let changes=0;
  for(let step=0;step<1200;step++){
   const before=new Map(sim.cars.map(c=>[c.id,c.lane]));sim.step(.1);
   const sprites=layoutSprites(sim.cars,sim.incidents,options);separated(sprites);
