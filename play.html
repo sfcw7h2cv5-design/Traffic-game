@@ -13,15 +13,21 @@ canvas{height:680px}.gantrytabs{display:grid;grid-template-columns:repeat(5,minm
 .road-sign-target{position:absolute;height:44px;transform:translateY(-50%);background:transparent;border:1px solid transparent;border-radius:4px;pointer-events:auto;padding:0}.road-sign-target:focus-visible,.road-sign-target[aria-expanded="true"]{outline:2px solid #c9e994;outline-offset:-2px;background:#c9e99415}.gantry-side{height:38px;background:#203e38;color:#cee9a3;border:1px solid #6a8a64;font-size:9px;font-weight:700}.gantry-side small{display:block;font-size:7px;margin-top:3px}#inlineSignals{position:absolute;z-index:4;left:50%;transform:translateX(-50%);width:calc(100% - 20px);max-width:340px;background:#183631f5;color:#dcecc8;border:1px solid #a6c97a;border-radius:7px;padding:10px;box-shadow:0 7px 20px #0b191a55}#inlineSignals[hidden]{display:none}.inline-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}.inline-title strong{font:12px 'DM Sans',sans-serif;margin:0}.inline-title button{background:transparent;color:#dcecc8;border:0;padding:0 8px;font-size:22px;min-height:32px}.inline-speeds,.inline-modes{display:flex;gap:5px;margin-bottom:6px}.inline-speeds button,.inline-modes button{flex:1;background:#29473e;border:1px solid #63785b;color:#edf6db;font-size:12px;padding:8px 0;min-height:40px}.inline-speeds button[aria-pressed="true"],.inline-modes button[aria-pressed="true"]{background:#c3e28d;color:#24372a;border-color:#c3e28d}#inlineActual{font-size:9px;color:#abc59b;padding-top:3px}.playback{flex-wrap:wrap;justify-content:flex-end}.playback #sound{font-size:9px}.scenarioactions{gap:8px}.auto-incidents{font-size:9px}
 
 .road-camera{padding:12px 16px;background:#eef3e9;border-top:1px solid #dce6d4}.camera-heading{display:flex;justify-content:space-between;font-size:8px;letter-spacing:1px;color:#66805b;margin-bottom:8px}#viewGantries{display:flex;gap:7px;margin-bottom:10px}#viewGantries button{flex:1;min-height:40px;padding:7px 3px;font-size:11px}#viewGantries button[aria-pressed="true"]{background:#203c35;color:#d5edb3;border-color:#203c35}.road-camera label{font-size:7px;letter-spacing:1px}#roadPosition{display:block;width:100%;margin:8px 0 0;accent-color:#628746;min-height:28px}.road-sign-target[hidden]{display:none}
+
+/* Full-network mobile overview with a compact dashboard. */
+.queuekey{color:#e9c16e}#viewMode{font-size:9px}canvas{height:600px}
+@media(max-width:600px){
+ header{height:56px}.brand{gap:9px}.brand small{display:none}.logo{font-size:18px;padding:5px 7px}main{padding:12px 12px 8px}.intro{margin-bottom:12px;align-items:center}.intro .eyebrow,.intro p{display:none}h1{font-size:24px;letter-spacing:-1px;margin:4px 0}.intro .subtle{padding:6px}.stats{grid-template-columns:repeat(4,minmax(0,1fr));margin-bottom:12px}.stats>div{padding:10px 7px;border-bottom:0;border-right:1px solid #e7ebe4}.stats>div:nth-child(2){border-right:1px solid #e7ebe4}.stats>div:last-child{border:0}.stats label{font-size:7px;letter-spacing:.3px;line-height:1.4;min-height:20px}.stats strong{font-size:21px;margin:4px 0 0}.stats strong small{font-size:8px}.stats span{display:none}.workspace{gap:12px}.network .panelhead{padding:12px 10px;gap:8px}.network h2{font-size:17px}.network h2 span{font-size:8px;margin-top:4px}.playback{gap:4px;max-width:160px}.playback button{font-size:10px;padding:7px;min-height:32px}canvas{height:clamp(380px,68svh,600px)}.scenario{padding:14px}.scenario .eyebrow{display:none}.scenario h2{font-size:17px;margin:0 0 10px}.scenario p{min-height:0;margin:6px 0}.scenarioactions{margin:8px 0}#event{padding-top:8px}.maplegend{font-size:7px;gap:6px}.networkfooter{padding:9px 10px}footer{margin-top:12px}
+}
 </style></head><body>
 <header><div class="brand"><span class="logo">M</span><div>MOTORWAY <b>/ CONTROL</b><small>REGIONAL OPERATIONS · SECTOR 04</small></div></div><span class="live"><i></i> LIVE SIMULATION</span></header>
 <main><section class="intro"><div><div class="eyebrow">YOUR NETWORK. YOUR CALL.</div><h1>Keep things moving.</h1><p>Read the road. Set the signals. Find the flow.</p></div><button id="help" class="subtle">ⓘ Operator guide</button></section>
 <section class="stats"><div><label>NETWORK FLOW</label><strong id="flow">0 <small>veh/h</small></strong><span id="flowHint">Measuring downstream throughput</span></div><div><label>MEAN SPEED</label><strong id="speed">0 <small>mph</small></strong><span>Across all active vehicles</span></div><div><label>ON THE NETWORK</label><strong id="vehicles">0</strong><span id="queue">0 waiting at entry</span></div><div><label>SIMULATION TIME</label><strong id="time">08:00</strong><span>No fail state. Keep experimenting.</span></div></section>
-<div class="workspace"><section class="network"><div class="panelhead"><div><span class="eyebrow">M1 NORTHBOUND</span><h2>The live network <span>6 km · 5 gantries · 3 lanes</span></h2></div><div class="playback"><button id="pause" aria-label="Pause simulation">❚❚</button><button id="rate">1×</button><button id="sound" aria-pressed="false">Sound off</button></div></div><div class="road-camera"><div class="camera-heading"><span>ROAD CLOSE-UP · 400 m</span><span id="viewRange"></span></div><div id="viewGantries" aria-label="Jump to gantry"></div><label for="roadPosition">EXPLORE THE FULL 6 KM MOTORWAY</label><input id="roadPosition" type="range" min="0" max="5600" step="10" aria-label="Motorway view position"></div><div class="mapwrap"><canvas id="road" aria-label="Live motorway simulation. Tap an overhead gantry to open its signal controls."></canvas><div id="gantryTargets" aria-label="Gantry controls"></div><section id="inlineSignals" aria-label="Sign controls" hidden><div class="inline-title"><strong id="inlineTitle"></strong><button id="closeInline" aria-label="Close sign controls">×</button></div><div class="inline-speeds" id="inlineSpeeds"></div><div class="inline-modes" id="inlineModes"></div><div id="inlineActual"></div></section><div class="maplegend"><span><i class="dot green"></i> Moving traffic</span><span><i class="dot amber"></i> Slowing / braking</span><span><i class="dot red"></i> Incident</span><span class="hgvkey">▰ HGV</span></div></div><div class="networkfooter"><span><i class="dot green"></i> NETWORK CONNECTED</span><span>Tap a gantry to change its signals</span></div></section>
+<div class="workspace"><section class="network"><div class="panelhead"><div><span class="eyebrow">M1 NORTHBOUND</span><h2>The live network <span>6 km · 5 gantries · 3 lanes</span></h2></div><div class="playback"><button id="pause" aria-label="Pause simulation">❚❚</button><button id="rate">1×</button><button id="viewMode" aria-pressed="false">Detail</button><button id="sound" aria-pressed="false">Sound off</button></div></div><div class="mapwrap"><canvas id="road" aria-label="Live motorway simulation. Tap an overhead gantry to open its signal controls."></canvas><div id="gantryTargets" aria-label="Gantry controls"></div><section id="inlineSignals" aria-label="Sign controls" hidden><div class="inline-title"><strong id="inlineTitle"></strong><button id="closeInline" aria-label="Close sign controls">×</button></div><div class="inline-speeds" id="inlineSpeeds"></div><div class="inline-modes" id="inlineModes"></div><div id="inlineActual"></div></section><div class="maplegend"><span><i class="dot green"></i> Moving traffic</span><span><i class="dot amber"></i> Slowing / braking</span><span><i class="dot red"></i> Incident</span><span class="hgvkey">▰ HGV</span><span class="queuekey">▏ Queues</span></div></div><div class="networkfooter"><span><i class="dot green"></i> NETWORK CONNECTED</span><span>Tap a gantry to change its signals</span></div></section>
 <aside>
 <section class="scenario"><div class="eyebrow">TRAFFIC DESK</div><h2>Change the conditions.</h2><label for="scenario">ACTIVE SCENARIO</label><select id="scenario"><option value="commute">Morning commute</option><option value="busy">Rush hour surge</option><option value="incident">Broken-down vehicle</option><option value="rain">Heavy rain</option><option value="reckless">Unpredictable drivers</option></select><p id="scenarioText">Steady arrivals with a mix of cars and HGVs. A good place to learn the network.</p><div class="scenarioactions"><span class="auto-incidents">● Recovery dispatched automatically</span></div><div id="event" role="status">Control desk ready. Random incidents are active.</div></section></aside></div>
 <footer><span>DESIGNED FOR FLOW, NOT FAILURE.</span><span>Keep left · Overtake right · Live lane control</span></footer></main>
-<dialog id="guide"><button id="closeHelp" class="close" aria-label="Close guide">×</button><div class="eyebrow">WELCOME TO THE CONTROL CENTRE</div><h2>A calmer road starts upstream.</h2><p>Vehicles travel upwards through five gantries along 6 km of motorway. Use G01–G05 to jump to a gantry, or the road slider to explore between gantries. Vehicles stay the same size throughout the close-up view. Tap an individual overhead sign to edit that lane directly on the road. Tap the gantry’s side label to set all three lanes. Tap elsewhere on the road to dismiss the controls. Changes apply immediately.</p><p><b>↖ / ↗ Merge:</b> asks drivers to leave a lane. <b>× Closed:</b> vehicles merge or stop before the controlled section. Speed limits show mph.</p><p>For an incident, use a merge arrow at the gantry before it, then close the affected lane. Lower upstream speeds to smooth queues. Random incidents arrive at the traffic desk. Breakdowns always block the left lane; look for a stopped vehicle with flashing hazards. A recovery truck must reach each breakdown and load the vehicle before the lane clears. Recovery is dispatched automatically, and loading takes only a few seconds. Debris and collisions take longer to clear. Reopen your signals once the obstruction is gone.</p><p>Flow counts vehicles leaving the motorway over the last simulated minute. Demand, headways, braking, lane changes, HGVs and imperfect compliance shape the result. This is an illustrative model, not an engineering prediction.</p><p>Police and ambulances use flashing blue lights and priority driving; traffic yields when safe. Tap Sound on to hear sirens. Recovery uses the hard shoulder.</p><p>There is no losing. Pause, experiment, and find a rhythm.</p><button id="begin">Take control →</button></dialog><script>const LENGTH = 6000;
+<dialog id="guide"><button id="closeHelp" class="close" aria-label="Close guide">×</button><div class="eyebrow">WELCOME TO THE CONTROL CENTRE</div><h2>A calmer road starts upstream.</h2><p>Vehicles travel upwards through five gantries along 6 km of motorway. The full motorway and all five gantries are visible together. Amber/red bands show dense queues; their labels count slow vehicles. Vehicle symbols stay the same size. Tap Detail for an optional close-up of the selected gantry, then Show all to return. Tap an individual overhead sign to edit that lane directly on the road. Tap the gantry’s side label to set all three lanes. Tap elsewhere on the road to dismiss the controls. Changes apply immediately.</p><p><b>↖ / ↗ Merge:</b> asks drivers to leave a lane. <b>× Closed:</b> vehicles merge or stop before the controlled section. Speed limits show mph.</p><p>For an incident, use a merge arrow at the gantry before it, then close the affected lane. Lower upstream speeds to smooth queues. Random incidents arrive at the traffic desk. Breakdowns always block the left lane; look for a stopped vehicle with flashing hazards. A recovery truck must reach each breakdown and load the vehicle before the lane clears. Recovery is dispatched automatically, and loading takes only a few seconds. Debris and collisions take longer to clear. Reopen your signals once the obstruction is gone.</p><p>Flow counts vehicles leaving the motorway over the last simulated minute. Demand, headways, braking, lane changes, HGVs and imperfect compliance shape the result. This is an illustrative model, not an engineering prediction.</p><p>Police and ambulances use flashing blue lights and priority driving; traffic yields when safe. Tap Sound on to hear sirens. Recovery uses the hard shoulder.</p><p>There is no losing. Pause, experiment, and find a rhythm.</p><button id="begin">Take control →</button></dialog><script>const LENGTH = 6000;
 const GANTRIES = [450, 1550, 2650, 3750, 4850];
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
@@ -311,19 +317,39 @@ class Simulation {
 
 // Vehicle dimensions are fixed by type. The close-up road camera supplies
 // enough pixels per metre for physical bumper gaps to remain visible.
-function layoutSprites(cars, incidents, {left,laneWidth,project}) {
- return [...cars.map(c=>({...c,static:false})),...incidents.map(i=>({...i,visualLane:i.lane,static:true}))].map(c=>{
+function layoutSprites(cars, incidents, {left,laneWidth,project,overview=false}) {
+ const sprites=[...cars.map(c=>({...c,static:false})),...incidents.map(i=>({...i,visualLane:i.lane,static:true}))].map(c=>{
   const width=c.kind==='ambulance'?7:c.kind==='recovery'||c.truck?8:5;
   const height=c.towing||c.kind==='recovery'?20:c.truck?13:c.kind==='ambulance'?10:6;
   return {...c,cx:c.lane<0?left-10:left+(c.visualLane+.5)*laneWidth,cy:project(c.x),width,height,nominalHeight:height};
  }).sort((a,b)=>a.cy-b.cy);
+ if(!overview)return sprites.map(c=>({...c,visible:true}));
+ const occupied=[];
+ const priority=c=>c.static?0:c.emergency?1:c.kind==='recovery'?2:c.truck?3:4;
+ for(const c of [...sprites].sort((a,b)=>priority(a)-priority(b)||a.cy-b.cy)){
+  c.visible=!occupied.some(p=>Math.abs(c.cx-p.cx)<(c.width+p.width)/2+3&&c.cy<p.cy+p.height+2&&p.cy<c.cy+c.height+2);
+  if(c.visible)occupied.push(c);
+ }
+ return sprites;
 }
 function createSpriteLayout(){return layoutSprites;}
+
+// Queue bands aggregate close, slow vehicles in the wide overview. The traffic
+// model still advances every individual vehicle, whether its symbol fits or not.
+function queueBands(cars){
+ const result=[];
+ for(let lane=0;lane<3;lane++){
+  const slow=cars.filter(c=>c.lane===lane&&c.v<8).sort((a,b)=>a.x-b.x);let group=[];
+  const flush=()=>{if(group.length>=3)result.push({lane,back:group[0].x-group[0].length,front:group.at(-1).x,count:group.length,speed:group.reduce((n,c)=>n+c.v,0)/group.length});group=[];};
+  for(const c of slow){if(group.length&&c.x-group.at(-1).x>120)flush();group.push(c);}flush();
+ }
+ return result;
+}
 
 const placeSprites=createSpriteLayout();
 const $=s=>document.querySelector(s),sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
-const VIEW_LENGTH=400;let viewStart=GANTRIES[selected]-VIEW_LENGTH/2;
+let VIEW_LENGTH=LENGTH,viewStart=0;
 const canvas=$('#road'),ctx=canvas.getContext('2d'),editor=$('#inlineSignals');
 const descriptions={commute:'Steady arrivals with a mix of cars and HGVs.',busy:'Peak demand. Protect queue tails with upstream limits.',incident:'Random incidents need protection and vehicle recovery.',rain:'Wet conditions increase following distances.',reckless:'Watch for unpredictable drivers and braking waves.'};
 function notify(text){$('#event').textContent=text}
@@ -346,11 +372,13 @@ $('#closeInline').onclick=closeEditor;
 editor.addEventListener('click',e=>e.stopPropagation());
 $('.mapwrap').addEventListener('click',e=>{if(!e.target.closest('#inlineSignals')&&!e.target.closest('[data-gantry]'))closeEditor()});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeEditor()});
-function setView(start){viewStart=Math.max(0,Math.min(LENGTH-VIEW_LENGTH,start));closeEditor();positionTargets();$('#roadPosition').value=viewStart;$('#viewRange').textContent=(viewStart/1000).toFixed(2)+'–'+((viewStart+VIEW_LENGTH)/1000).toFixed(2)+' km';document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(GANTRIES[+b.dataset.view]>=viewStart&&GANTRIES[+b.dataset.view]<=viewStart+VIEW_LENGTH)))}
-$('#viewGantries').innerHTML=GANTRIES.map((g,i)=>`<button data-view="${i}" aria-label="View Gantry 0${i+1}">G0${i+1}</button>`).join('');
-$('#viewGantries').onclick=e=>{const b=e.target.closest('[data-view]');if(b)setView(GANTRIES[+b.dataset.view]-VIEW_LENGTH/2)};
-$('#roadPosition').max=LENGTH-VIEW_LENGTH;$('#roadPosition').oninput=e=>setView(+e.target.value);
-new ResizeObserver(positionTargets).observe(canvas);setView(viewStart);
+$('#viewMode').onclick=()=>{
+ const overview=VIEW_LENGTH===LENGTH;VIEW_LENGTH=overview?400:LENGTH;
+ viewStart=overview?Math.max(0,Math.min(LENGTH-VIEW_LENGTH,GANTRIES[selected]-VIEW_LENGTH/2)):0;
+ $('#viewMode').textContent=overview?'Show all':'Detail';
+ $('#viewMode').setAttribute('aria-pressed',String(overview));closeEditor();positionTargets();
+};
+new ResizeObserver(positionTargets).observe(canvas);positionTargets();
 function updateInlineReading(){if(editor.hidden)return;const cars=sim.cars.filter(c=>c.x>=GANTRIES[selected]&&c.x<(GANTRIES[selected+1]??LENGTH)&&(laneScope==='all'?c.lane>=0:c.lane===+laneScope));$('#inlineActual').textContent=cars.length?'Actual '+Math.round(cars.reduce((n,c)=>n+c.v,0)/cars.length/.44704)+' mph · changes apply downstream':'No traffic in this section'}
 $('#pause').onclick=()=>{paused=!paused;$('#pause').textContent=paused?'▶':'❚❚';$('#pause').setAttribute('aria-label',paused?'Resume simulation':'Pause simulation')};
 $('#rate').onclick=()=>{rate=rate===1?2:rate===2?4:1;$('#rate').textContent=rate+'×'};
@@ -362,11 +390,17 @@ $('#sound').onclick=async()=>{try{if(!audio){audio=new(window.AudioContext||wind
 function updateSiren(){if(!audio)return;const active=sound&&!paused&&!document.hidden&&sim.cars.some(c=>c.emergency&&c.x>0&&c.x<LENGTH);gain.gain.setTargetAtTime(active?.035:0,audio.currentTime,.08);if(active)osc.frequency.setTargetAtTime(650+330*(.5+.5*Math.sin(audio.currentTime*5)),audio.currentTime,.05)}
 document.addEventListener('visibilitychange',()=>{if(gain&&document.hidden)gain.gain.setTargetAtTime(0,audio.currentTime,.02)});
 function draw(){const w=canvas.clientWidth,h=canvas.clientHeight,dpr=devicePixelRatio||1;if(canvas.width!==w*dpr||canvas.height!==h*dpr){canvas.width=w*dpr;canvas.height=h*dpr}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#1d3437';ctx.fillRect(0,0,w,h);const roadW=Math.min(w*.48,250),left=(w-roadW)/2,lw=roadW/3,top=30,bottom=h-46,scale=(bottom-top)/VIEW_LENGTH,y=x=>bottom-(x-viewStart)*scale;ctx.fillStyle='#2c3c40';ctx.fillRect(left-15,0,roadW+30,h);ctx.fillStyle='#35464a';ctx.fillRect(left,0,roadW,h);ctx.strokeStyle='#9eafa5';ctx.lineWidth=1;for(const x of [left,left+roadW]){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}ctx.setLineDash([8,12]);ctx.strokeStyle='#82938b88';for(let l=1;l<3;l++){ctx.beginPath();ctx.moveTo(left+l*lw,0);ctx.lineTo(left+l*lw,h);ctx.stroke()}ctx.setLineDash([]);
-ctx.font='9px sans-serif';ctx.fillStyle='#7d9990';ctx.textAlign='left';for(let m=Math.ceil(viewStart/100)*100;m<=viewStart+VIEW_LENGTH;m+=100){ctx.fillText((m/1000).toFixed(1)+' km',15,y(m));ctx.fillRect(left-25,y(m),8,1)}ctx.save();ctx.translate(w-20,h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#79968c';ctx.font='9px sans-serif';ctx.fillText('NORTHBOUND  →',-55,0);ctx.restore();
-// Fixed-size symbols follow the physical positions through a close-up camera.
-for(const c of placeSprites(sim.cars,sim.incidents,{left,laneWidth:lw,project:y})){
+ctx.font='9px sans-serif';ctx.fillStyle='#7d9990';ctx.textAlign='left';for(let m=Math.ceil(viewStart/(VIEW_LENGTH===LENGTH?1000:100))*(VIEW_LENGTH===LENGTH?1000:100);m<=viewStart+VIEW_LENGTH;m+=(VIEW_LENGTH===LENGTH?1000:100)){ctx.fillText((m/1000).toFixed(1)+' km',15,y(m));ctx.fillRect(left-25,y(m),8,1)}ctx.save();ctx.translate(w-20,h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#79968c';ctx.font='9px sans-serif';ctx.fillText('NORTHBOUND  →',-55,0);ctx.restore();
+// The whole network is visible by default. Dense queues are represented by
+// bands; fixed-size vehicle symbols never overlap or squeeze into gaps.
+if(VIEW_LENGTH===LENGTH)for(const band of queueBands(sim.cars)){
+ const bx=left+band.lane*lw+5,by=y(band.front),bh=Math.max(4,y(band.back)-by);
+ ctx.fillStyle=band.speed<2?'#e99c7b':'#e9c16e';ctx.fillRect(bx,by,3,bh);
+ ctx.font='8px sans-serif';ctx.textAlign='left';ctx.fillText(String(band.count),bx+5,by+8);
+}
+for(const c of placeSprites(sim.cars,sim.incidents,{left,laneWidth:lw,project:y,overview:VIEW_LENGTH===LENGTH})){
  const {cx,cy,width,height}=c;
- if(cy<-25||cy>h-40)continue;
+ if(!c.visible||cy<-25||cy>h-40)continue;
  ctx.save();
  ctx.fillStyle=c.static?'#ef9476':c.kind==='police'?'#f2f2dd':c.kind==='ambulance'?'#edee75':c.kind==='recovery'?'#f5b85a':c.truck?'#e7dfb5':c.braking?'#e7b66f':['#c6ddd1','#7ba9ad','#a9c998','#d9e2d5'][c.id%4];
  ctx.beginPath();ctx.roundRect(cx-width/2,cy,width,height,1);ctx.fill();ctx.fillStyle='#385a63';ctx.fillRect(cx-width/2+.6,cy+1,width-1.2,2);
