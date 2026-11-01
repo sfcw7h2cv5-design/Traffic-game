@@ -1,0 +1,206 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#101b24"><title>Motorway / Control</title><style>:root{font-family:'DM Sans',sans-serif;color:#172b32;background:#f3f5f3;font-synthesis:none}*{box-sizing:border-box}body{margin:0}button,select{font:inherit}button{cursor:pointer;touch-action:manipulation}header{height:88px;background:#12262d;color:white;display:flex;justify-content:space-between;align-items:center;padding:0 5%;border-bottom:4px solid #b7e46c}.brand{display:flex;align-items:center;gap:13px;font-family:'Space Grotesk',sans-serif;letter-spacing:1px;font-size:17px}.brand b{font-weight:400;color:#b7e46c}.brand small{display:block;font:9px 'DM Sans',sans-serif;letter-spacing:2px;color:#96a8ac;margin-top:7px}.logo{border:1px solid #78968e;color:#c6ed8b;border-radius:6px;padding:9px;font-size:24px;font-weight:700}.live{font-size:10px;letter-spacing:1.5px;display:flex;align-items:center;gap:8px}.live i,.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#b7e46c}main{max-width:1500px;margin:auto;padding:35px 5% 20px}.intro{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px}.eyebrow{font-size:10px;font-weight:700;letter-spacing:1.8px;color:#618071}h1,h2,strong{font-family:'Space Grotesk',sans-serif}h1{font-size:38px;letter-spacing:-1.6px;margin:8px 0}p{font-size:13px;color:#6d7b7b;line-height:1.6;margin:8px 0}button{border:1px solid #d6ded9;background:white;border-radius:6px;padding:9px 12px;color:#233c3f}.subtle{background:transparent;font-size:12px}.stats{display:grid;grid-template-columns:repeat(4,1fr);background:white;border:1px solid #dce3dd;border-radius:9px;margin-bottom:24px;padding:22px 0}.stats>div{padding:0 24px;border-right:1px solid #e6ebe6}.stats>div:last-child{border:0}label{font-size:9px;letter-spacing:1.2px;font-weight:700;color:#6f807e;display:block}strong{font-size:32px;display:block;margin:7px 0}strong small{font:12px 'DM Sans',sans-serif;color:#758680}.stats span{font-size:10px;color:#84918a}.workspace{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(320px,1fr);gap:22px;align-items:start}.network,.control,.scenario{border:1px solid #dce3dd;border-radius:9px;background:white;overflow:hidden}.panelhead{padding:21px;display:flex;justify-content:space-between;align-items:center}h2{font-size:20px;letter-spacing:-.6px;margin:6px 0 0}h2 span{font:10px 'DM Sans',sans-serif;color:#8b9992;margin-left:8px}.playback{display:flex;gap:5px}.playback button{padding:7px 10px;font-size:12px}.mapwrap{position:relative;background:#182e33}canvas{width:100%;height:510px;display:block}.maplegend{position:absolute;bottom:14px;left:18px;display:flex;gap:15px;color:#b7c8c4;font-size:9px}.dot{margin-right:5px}.green{background:#aee072}.amber{background:#f3bf69}.red{background:#f37960}.gantrytabs{display:flex;gap:8px;padding:16px}.gantrytabs button{flex:1;text-align:left;font-size:11px;padding:12px}.gantrytabs small{display:block;font-size:9px;color:#83918a;margin-top:4px}.gantrytabs .active{background:#eff7e6;border-color:#96bd6d;color:#355a36}.networkfooter{display:flex;justify-content:space-between;padding:12px 18px;border-top:1px solid #e8ece7;font-size:8px;color:#82918a;letter-spacing:.5px}aside{display:grid;gap:18px}.badge{font-size:10px;border:1px solid #dce5db;padding:5px 8px;border-radius:4px;color:#71836e}.hint{margin:0 21px 15px;font-size:11px}.lanes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 18px}.lane{text-align:center;background:#f6f8f5;border:1px solid #e1e7df;border-radius:7px;padding:12px 6px}.lane label{font-size:9px;margin-bottom:10px}.signal{background:#15242b;border:3px solid #34444b;box-shadow:0 3px 5px #14253022;border-radius:7px;color:#fff;font-family:'Space Grotesk',sans-serif;font-size:25px;width:58px;height:58px;margin:0 auto 12px;display:grid;place-items:center}.signal span{border:2px solid #f96754;border-radius:50%;width:40px;height:40px;display:grid;place-items:center}.signal.closed{color:#ff695b}.signal.merge{color:#ffcb70}.lane select{width:100%;font-size:11px;border:1px solid #d7dfd5;border-radius:4px;padding:8px 1px;background:white;margin-bottom:5px;color:#29423e}.allcontrols{padding:18px}.quick{display:flex;gap:6px;margin-top:8px}.quick button{flex:1;font-size:11px;padding:8px 2px}.notice{display:flex;gap:12px;margin:0 18px 18px;background:#f0f5e9;padding:12px;border-radius:6px}.notice>span{font-size:24px;color:#7d9d55}.notice p{font-size:10px;margin:0;color:#77856a}.scenario{padding:21px}.scenario h2{margin-bottom:18px}.scenario select{width:100%;padding:11px;margin-top:7px;border:1px solid #d9e1d7;border-radius:5px;background:#fafbf9;color:#263d37;font-size:12px}.scenario p{font-size:11px;min-height:34px}.scenarioactions{display:flex;gap:8px;margin:15px 0}.scenarioactions button{flex:1;font-size:10px}.scenarioactions button:first-child{background:#203c35;color:#e3f2d8;border-color:#203c35}#event{border-top:1px solid #e6ebe2;padding-top:13px;font-size:10px;color:#72866e}footer{display:flex;justify-content:space-between;margin-top:25px;font-size:8px;letter-spacing:1px;color:#8a988d}dialog{border:1px solid #d8e1d4;border-radius:12px;max-width:470px;padding:30px;color:#203b34}dialog::backdrop{background:#10272ccc;backdrop-filter:blur(4px)}dialog h2{font-size:26px;margin:15px 0}.close{float:right;border:0;padding:0;font-size:24px}#begin{background:#203c35;color:white;width:100%;margin-top:12px}@media(max-width:900px){main{padding:25px 20px}.workspace{grid-template-columns:1fr}.stats>div{padding:0 14px}canvas{height:460px}aside{grid-template-columns:1fr 1fr}.live{font-size:8px}h1{font-size:32px}.control .panelhead{padding:18px}h2 span{display:block;margin:6px 0 0}}@media(max-width:600px){header{height:75px;padding:0 18px}.brand{font-size:13px}.brand small{font-size:7px}.live{font-size:0}.live i{width:7px;height:7px}main{padding:25px 14px}.intro{align-items:start;gap:5px}.intro .subtle{font-size:0;padding:9px}.intro .subtle:after{content:'ⓘ';font-size:17px}h1{font-size:29px}.intro p{font-size:11px}.eyebrow{font-size:8px}.stats{grid-template-columns:1fr 1fr;padding:0}.stats>div{padding:16px;border-bottom:1px solid #e7ebe4}.stats>div:nth-child(2){border-right:0}.stats>div:nth-child(3),.stats>div:nth-child(4){border-bottom:0}strong{font-size:28px}.stats span{font-size:9px}aside{grid-template-columns:1fr}canvas{height:480px}.panelhead{padding:16px}h2{font-size:18px}.maplegend{gap:10px;font-size:8px}.gantrytabs{padding:12px;gap:5px}.gantrytabs button{padding:10px 7px}.networkfooter{font-size:7px;padding:12px}footer{font-size:7px;gap:18px;line-height:1.6}}
+
+.auto-incidents{align-self:center;flex:1;color:#628247;font-size:10px;line-height:1.5}.hgvkey{color:#e7dfb5}.scenarioactions{align-items:center}.scenarioactions button{flex:0 0 auto}.maplegend{flex-wrap:wrap;right:8px}</style></head><body>
+<header><div class="brand"><span class="logo">M</span><div>MOTORWAY <b>/ CONTROL</b><small>REGIONAL OPERATIONS · SECTOR 04</small></div></div><span class="live"><i></i> LIVE SIMULATION</span></header>
+<main><section class="intro"><div><div class="eyebrow">YOUR NETWORK. YOUR CALL.</div><h1>Keep things moving.</h1><p>Read the road. Set the signals. Find the flow.</p></div><button id="help" class="subtle">ⓘ Operator guide</button></section>
+<section class="stats"><div><label>NETWORK FLOW</label><strong id="flow">0 <small>veh/h</small></strong><span id="flowHint">Measuring downstream throughput</span></div><div><label>MEAN SPEED</label><strong id="speed">0 <small>mph</small></strong><span>Across all active vehicles</span></div><div><label>ON THE NETWORK</label><strong id="vehicles">0</strong><span id="queue">0 waiting at entry</span></div><div><label>SIMULATION TIME</label><strong id="time">08:00</strong><span>No fail state. Keep experimenting.</span></div></section>
+<div class="workspace"><section class="network"><div class="panelhead"><div><span class="eyebrow">M1 NORTHBOUND</span><h2>The live network <span>3.6 km · 3 lanes</span></h2></div><div class="playback"><button id="pause" aria-label="Pause simulation">❚❚</button><button id="rate">1×</button></div></div><div class="mapwrap"><canvas id="road" aria-label="Live motorway simulation. Select a gantry using the controls below."></canvas><div class="maplegend"><span><i class="dot green"></i> Moving traffic</span><span><i class="dot amber"></i> Slowing / braking</span><span><i class="dot red"></i> Incident</span><span class="hgvkey">▰ HGV</span></div></div><div class="gantrytabs" id="gantries"></div><div class="networkfooter"><span><i class="dot green"></i> NETWORK CONNECTED</span><span>Traffic direction ↑ · UK left-hand traffic</span></div></section>
+<aside><section class="control"><div class="panelhead"><div><span class="eyebrow">SIGNAL CONTROL</span><h2 id="selected">Gantry 02</h2></div><span class="badge" id="distance">1.8 km</span></div><p class="hint">Signals apply from this gantry to the next.</p><div class="lanes" id="lanes"></div><div class="allcontrols"><label>ALL LANES</label><div class="quick" id="allSpeeds"></div></div><div class="notice"><span>↗</span><p>Give drivers room to merge. Set an arrow upstream before closing a lane.</p></div></section>
+<section class="scenario"><div class="eyebrow">TRAFFIC DESK</div><h2>Change the conditions.</h2><label for="scenario">ACTIVE SCENARIO</label><select id="scenario"><option value="commute">Morning commute</option><option value="busy">Rush hour surge</option><option value="incident">Broken-down vehicle</option><option value="rain">Heavy rain</option><option value="reckless">Unpredictable drivers</option></select><p id="scenarioText">Steady arrivals with a mix of cars and HGVs. A good place to learn the network.</p><div class="scenarioactions"><span class="auto-incidents">● Automatic incidents active</span><button id="clear">Clear incidents</button></div><div id="event" role="status">Control desk ready. Random incidents are active.</div></section></aside></div>
+<footer><span>DESIGNED FOR FLOW, NOT FAILURE.</span><span>Keep left · Overtake right · Live lane control</span></footer></main>
+<dialog id="guide"><button id="closeHelp" class="close" aria-label="Close guide">×</button><div class="eyebrow">WELCOME TO THE CONTROL CENTRE</div><h2>A calmer road starts upstream.</h2><p>Vehicles travel upwards through three gantries. Select a gantry, then set each lane’s speed or signal. Changes apply immediately.</p><p><b>↖ / ↗ Merge:</b> asks drivers to leave a lane. <b>× Closed:</b> vehicles merge or stop before the controlled section. Speed limits show mph.</p><p>For an incident, use a merge arrow at the gantry before it, then close the affected lane. Lower upstream speeds to smooth queues. Random incidents arrive at the traffic desk. Breakdowns always block the left lane; look for a stopped vehicle with flashing hazards. Clear incidents when you’re ready.</p><p>Flow counts vehicles leaving the motorway over the last simulated minute. Demand, headways, braking, lane changes, HGVs and imperfect compliance shape the result. This is an illustrative model, not an engineering prediction.</p><p>There is no losing. Pause, experiment, and find a rhythm.</p><button id="begin">Take control →</button></dialog><script>const LENGTH = 3600;
+const GANTRIES = [450, 1650, 2850];
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+
+class Simulation {
+  constructor(random = Math.random) {
+    this.random = random;
+    this.signals = GANTRIES.map(() => Array.from({ length: 3 }, () => ({ speed: 70, mode: 'open' })));
+    this.cars = []; this.incidents = []; this.exits = [];
+    this.elapsed = 0; this.waiting = 0; this.id = 0; this.scenario = 'commute';
+    this.nextArrival = 1 + random() * 3;
+    this.nextIncident = 35 + random() * 30;
+    this.eventId = 0; this.lastEvent = '';
+    // Stagger each lane independently; most traffic starts in the running lane.
+    for (let lane = 0; lane < 3; lane++) {
+      for (let x = 100 + random() * 120; x < LENGTH; x += [155, 330, 780][lane] + random() * 140) {
+        this.spawn(lane, x, [25, 28, 30][lane] + random() * 2);
+      }
+    }
+  }
+  spawn(lane, x = 0, v = 0) {
+    const truck = lane < 2 && this.random() < (lane === 0 ? .26 : .10);
+    const car = {
+      id: this.id++, lane, fromLane: lane, visualLane: lane, x, v,
+      length: truck ? 16.5 : 4.7, truck,
+      desired: truck ? 23 + this.random() * 2 : 27 + this.random() * 6,
+      headway: 1.8 + this.random() * .9,
+      reaction: .65 + this.random() * .8,
+      acceleration: truck ? .55 + this.random() * .25 : .9 + this.random() * .7,
+      courtesy: .96 + this.random() * .06,
+      reckless: this.random() < .08,
+      cooldown: this.random() * 4, decision: this.random(),
+      restart: 0, a: 0, braking: false,
+    };
+    car.v = Math.min(v, car.desired);
+    this.cars.push(car);
+    return car;
+  }
+  signalAt(x, lane) {
+    let i = -1;
+    for (let j = 0; j < 3; j++) if (x >= GANTRIES[j]) i = j;
+    return i < 0 ? { speed: 70, mode: 'open' } : this.signals[i][lane];
+  }
+  obstacle(car, lane, traffic = this.cars) {
+    let pos = LENGTH + 1000, speed = car.desired;
+    for (const c of traffic) {
+      const occupying = c.lane === lane || (Math.abs(c.visualLane - c.lane) > .08 && c.fromLane === lane);
+      if (c.id !== car.id && occupying && c.x >= car.x && c.x - c.length < pos) {
+        pos = c.x - c.length; speed = c.v;
+      }
+    }
+    for (const i of this.incidents) if (i.lane === lane && i.x >= car.x && i.x - i.length < pos) {
+      pos = i.x - i.length; speed = 0;
+    }
+    for (let g = 0; g < 3; g++) if (this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
+      pos = Math.max(car.x, GANTRIES[g] - 8); speed = 0;
+    }
+    return { gap: Math.max(.1, pos - car.x), speed };
+  }
+  addIncident(lane = 0, x = 2200, type = 'breakdown') {
+    if (type === 'breakdown') lane = 0;
+    // Use an actual vehicle where possible, preserving its position and appearance.
+    const vehicle = this.cars.filter(c => c.lane === lane && c.x > 900 && c.x < 3000 && c.v > 10)
+      .sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
+    const incident = { lane, x: vehicle?.x ?? x, type, truck: vehicle?.truck ?? false,
+      length: vehicle?.length ?? 4.7, started: this.elapsed };
+    if (vehicle) this.cars = this.cars.filter(c => c.id !== vehicle.id);
+    this.incidents.push(incident);
+    this.lastEvent = `${type === 'breakdown' ? 'Broken-down ' + (incident.truck ? 'HGV' : 'car') : type === 'debris' ? 'Debris reported' : 'Collision reported'} · Lane ${lane + 1} · ${(incident.x / 1000).toFixed(2)} km. Set upstream warnings.`;
+    this.eventId++;
+    return incident;
+  }
+  step(dt) {
+    this.elapsed += dt;
+    if (this.elapsed >= this.nextIncident) {
+      if (this.incidents.length < 3) {
+        const roll = this.random();
+        const type = roll < .65 ? 'breakdown' : roll < .85 ? 'debris' : 'collision';
+        this.addIncident(type === 'breakdown' ? 0 : Math.floor(this.random() * 3), 1300 + this.random() * 1500, type);
+      }
+      this.nextIncident = this.elapsed + 110 + this.random() * 130;
+    }
+    const demand = { commute: .48, busy: 1.05, incident: .65, rain: .55, reckless: .65 }[this.scenario];
+    this.nextArrival -= dt;
+    while (this.nextArrival <= 0) {
+      this.waiting++;
+      this.nextArrival += (.6 + this.random() * 1.8) / demand;
+    }
+    // Entries prefer the left. Overflow can join lane 2 in heavier traffic.
+    for (const lane of this.waiting > 4 ? [0, 1] : [0]) {
+      if (!this.waiting || this.signalAt(0, lane).mode !== 'open') continue;
+      const front = this.cars.filter(c => c.lane === lane).sort((a, b) => a.x - b.x)[0];
+      if (!front || front.x - front.length > Math.max(45, front.v * 2.5)) {
+        this.spawn(lane, 0, front ? Math.min(22, front.v) : 23); this.waiting--;
+      }
+    }
+    const rain = this.scenario === 'rain';
+    // Freeze all leader positions/speeds for this step. Updating leaders first
+    // makes followers react instantly and produces artificial synchronised motion.
+    const snapshot = this.cars.map(c => ({ ...c }));
+    for (const c of this.cars) {
+      c.cooldown -= dt; c.decision -= dt;
+      const sig = this.signalAt(c.x, c.lane);
+      let front = this.obstacle(c, c.lane, snapshot);
+      const upcoming = GANTRIES.findIndex((x, g) => x > c.x && x - c.x < 350 && this.signals[g][c.lane].mode !== 'open');
+      const warning = upcoming >= 0 ? this.signals[upcoming][c.lane] : sig;
+      const forced = sig.mode !== 'open' || upcoming >= 0 || (front.gap < 160 && front.speed < 3);
+      if (c.decision <= 0 && c.cooldown <= 0 && Math.abs(c.visualLane - c.lane) < .08) {
+        c.decision = .7 + this.random() * .8;
+        let target = c.lane;
+        const safe = lane => {
+          if (lane < 0 || lane > 2 || (c.truck && lane === 2) || this.signalAt(c.x, lane).mode !== 'open') return false;
+          if (upcoming >= 0 && this.signals[upcoming][lane].mode !== 'open') return false;
+          const ahead = this.obstacle(c, lane, this.cars);
+          const behind = this.cars.filter(o => o.id !== c.id && (o.lane === lane || Math.abs(o.visualLane - lane) < .9) && o.x < c.x)
+            .sort((a, b) => b.x - a.x)[0];
+          const rearGap = behind ? c.x - c.length - behind.x : 1000;
+          const rearNeeded = behind ? 5 + behind.v * 1.5 + Math.max(0, behind.v - c.v) * 3 : 0;
+          return ahead.gap > 6 + c.v * (forced ? 1.1 : 1.8) && rearGap > rearNeeded;
+        };
+        if (forced) {
+          const candidates = warning.mode === 'merge' ? [c.lane === 2 ? 1 : c.lane + 1] : [c.lane + 1, c.lane - 1];
+          target = candidates.find(safe) ?? c.lane;
+        } else {
+          // Return left unless actively passing a slower vehicle there.
+          const left = c.lane - 1;
+          if (left >= 0 && safe(left)) {
+            const gap = this.obstacle(c, left, snapshot);
+            if (gap.gap > Math.max(65, c.v * 3.5) || gap.speed >= Math.min(c.desired, sig.speed * .44704) - 1) target = left;
+          }
+          const catching = front.gap < Math.max(75, c.v * 3.8) && front.speed < Math.min(c.desired, sig.speed * .44704) - 2;
+          if (target === c.lane && catching && safe(c.lane + 1)) {
+            const right = this.obstacle(c, c.lane + 1, snapshot);
+            if (right.gap > front.gap + 20 || right.speed > front.speed + 2) target = c.lane + 1;
+          }
+        }
+        if (target !== c.lane) { c.fromLane = c.lane; c.lane = target; c.cooldown = 5 + this.random() * 4; }
+      }
+      front = this.obstacle(c, c.lane, snapshot);
+      if (Math.abs(c.visualLane - c.lane) > .08) {
+        const oldFront = this.obstacle(c, c.fromLane, snapshot);
+        if (oldFront.gap < front.gap) front = oldFront;
+      }
+      const unruly = this.scenario === 'reckless' && c.reckless;
+      const limit = this.signalAt(c.x, c.lane).speed * .44704;
+      const desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
+      const headway = c.headway * (rain ? 1.35 : unruly ? .65 : 1);
+      const closing = c.v - front.speed;
+      const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
+      let acceleration = c.acceleration * (1 - (c.v / desired) ** 4 - (wanted / front.gap) ** 2);
+      // Each stopped driver waits their own reaction time as the queue releases.
+      if (c.v < .4 && (front.gap < 8 || front.speed < .5 && front.gap < 20)) c.restart = c.reaction;
+      else c.restart = Math.max(0, c.restart - dt);
+      if (c.restart > 0 && c.v < .4) acceleration = Math.min(0, acceleration);
+      const targetA = clamp(acceleration, -6, c.acceleration);
+      c.a += (targetA - c.a) * Math.min(1, dt / (targetA < -2 ? .18 : c.reaction));
+      const nextV = Math.max(0, c.v + c.a * dt);
+      const requested = Math.max(0, (c.v + nextV) * .5 * dt);
+      const move = Math.min(Math.max(0, front.gap - .8), requested);
+      c.x += move; c.v = move < requested ? move / dt : nextV;
+      c.braking = c.a < -.6;
+      c.visualLane += (c.lane - c.visualLane) * Math.min(1, dt * .85);
+    }
+    this.cars = this.cars.filter(c => {
+      if (c.x > LENGTH) { this.exits.push(this.elapsed); return false; } return true;
+    });
+    this.exits = this.exits.filter(t => t > this.elapsed - 60);
+  }
+}
+
+
+const $=s=>document.querySelector(s), sim=new Simulation();window.sim=sim;let selected=1,rate=1,paused=false;const canvas=$('#road'),ctx=canvas.getContext('2d');
+const descriptions={commute:'Steady arrivals with a mix of cars and HGVs. A good place to learn the network.',busy:'Peak demand is arriving. Smooth speeds and use every available lane to keep queues moving.',incident:'Breakdowns and other incidents arrive automatically. Watch the traffic desk and protect the queue with upstream signals.',rain:'Wet conditions increase following distances and reduce desired speeds. Try a consistent lower limit.',reckless:'Some drivers leave short gaps and exceed posted limits. Watch for waves of braking.'};
+function notify(t){$('#event').textContent=t}
+function renderControls(){ $('#selected').textContent=`Gantry 0${selected+1}`;$('#distance').textContent=`${(GANTRIES[selected]/1000).toFixed(2)} km`;$('#gantries').innerHTML=GANTRIES.map((g,i)=>`<button data-gantry="${i}" class="${selected===i?'active':''}" aria-pressed="${selected===i}">Gantry 0${i+1}<small>${(g/1000).toFixed(2)} km · ${i===0?'Entry':i===1?'Mid-sector':'Exit'}</small></button>`).join('');$('#lanes').innerHTML=sim.signals[selected].map((s,l)=>`<div class="lane"><label>LANE ${l+1}</label><div class="signal ${s.mode==='closed'?'closed':s.mode==='merge'?'merge':''}">${s.mode==='open'?`<span>${s.speed}</span>`:s.mode==='closed'?'×':l===2?'↖':'↗'}</div><select aria-label="Lane ${l+1} signal" data-lane="${l}" data-key="mode"><option value="open" ${s.mode==='open'?'selected':''}>Open</option><option value="merge" ${s.mode==='merge'?'selected':''}>Merge ${l===2?'left':'right'}</option><option value="closed" ${s.mode==='closed'?'selected':''}>Closed ×</option></select><select aria-label="Lane ${l+1} speed limit" data-lane="${l}" data-key="speed">${[20,30,40,50,60,70].map(v=>`<option ${v===s.speed?'selected':''} value="${v}">${v} mph</option>`).join('')}</select></div>`).join('')}
+$('#gantries').onclick=e=>{const b=e.target.closest('button');if(b){selected=+b.dataset.gantry;renderControls()}};$('#lanes').onchange=e=>{const {lane,key}=e.target.dataset;sim.signals[selected][lane][key]=key==='speed'?+e.target.value:e.target.value;notify(`Gantry 0${selected+1} · Lane ${+lane+1} signal updated.`);renderControls()};$('#allSpeeds').innerHTML=[30,40,50,60,70].map(n=>`<button data-speed="${n}">${n}</button>`).join('');$('#allSpeeds').onclick=e=>{if(e.target.dataset.speed){sim.signals[selected].forEach(s=>s.speed=+e.target.dataset.speed);renderControls();notify(`Gantry 0${selected+1} · All lanes set to ${e.target.dataset.speed} mph.`)}};
+$('#pause').onclick=()=>{paused=!paused;$('#pause').textContent=paused?'▶':'❚❚';$('#pause').setAttribute('aria-label',paused?'Resume simulation':'Pause simulation')};$('#rate').onclick=()=>{rate=rate===1?2:rate===2?4:1;$('#rate').textContent=rate+'×'};$('#scenario').onchange=e=>{sim.scenario=e.target.value;$('#scenarioText').textContent=descriptions[sim.scenario];if(sim.scenario==='incident')sim.nextIncident=Math.min(sim.nextIncident,sim.elapsed+8+Math.random()*10);notify('Conditions changed. Watch for automatic incident reports.')};$('#clear').onclick=()=>{sim.incidents=[];notify('Incidents cleared. Reopen lanes when you are ready.')};$('#help').onclick=()=>$('#guide').showModal();$('#closeHelp').onclick=$('#begin').onclick=()=>$('#guide').close();
+function draw(){const w=canvas.clientWidth,h=canvas.clientHeight,dpr=devicePixelRatio||1;if(canvas.width!==w*dpr||canvas.height!==h*dpr){canvas.width=w*dpr;canvas.height=h*dpr}ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle='#1d3437';ctx.fillRect(0,0,w,h);const roadW=Math.min(w*.48,250),left=(w-roadW)/2,lw=roadW/3,top=30,bottom=h-46,scale=(bottom-top)/LENGTH,y=x=>bottom-x*scale;ctx.fillStyle='#2c3c40';ctx.fillRect(left-15,0,roadW+30,h);ctx.fillStyle='#35464a';ctx.fillRect(left,0,roadW,h);ctx.strokeStyle='#9eafa5';ctx.lineWidth=1;for(const x of [left,left+roadW]){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}ctx.setLineDash([8,12]);ctx.strokeStyle='#82938b88';for(let l=1;l<3;l++){ctx.beginPath();ctx.moveTo(left+l*lw,0);ctx.lineTo(left+l*lw,h);ctx.stroke()}ctx.setLineDash([]);
+ctx.font='9px sans-serif';ctx.fillStyle='#7d9990';ctx.textAlign='left';for(let km=0;km<4;km++){ctx.fillText(`${km}.0 km`,15,y(km*1000));ctx.fillRect(left-25,y(km*1000),8,1)}ctx.save();ctx.translate(w-20,h/2);ctx.rotate(-Math.PI/2);ctx.fillStyle='#79968c';ctx.font='9px sans-serif';ctx.fillText('NORTHBOUND  →',-55,0);ctx.restore();
+// Compact vehicle symbols reduce the apparent bumper-to-bumper spacing.
+for(const c of sim.cars){const cx=left+(c.visualLane+.5)*lw,cy=y(c.x);
+const width=c.truck?8:4.5,height=c.truck?13:5.5;
+ctx.fillStyle=c.truck?'#e7dfb5':c.braking?'#e7b66f':['#c6ddd1','#7ba9ad','#a9c998','#d9e2d5'][c.id%4];
+ctx.beginPath();ctx.roundRect(cx-width/2,cy,width,height,1);ctx.fill();
+ctx.fillStyle=c.truck?'#6fb5bf':'#354b51';ctx.fillRect(cx-width/2+.7,cy+1,width-1.4,c.truck?3:1.2);
+if(c.truck){ctx.fillStyle='#9b926e';ctx.fillRect(cx-width/2+1,cy+5,width-2,1);ctx.fillStyle='#12262d';ctx.fillRect(cx-width/2-1,cy+8,1,3);ctx.fillRect(cx+width/2,cy+8,1,3)}
+if(c.braking){ctx.fillStyle='#ff7363';ctx.fillRect(cx-width/2,cy+height-1,1.5,1.5);ctx.fillRect(cx+width/2-1.5,cy+height-1,1.5,1.5)}}
+for(const i of sim.incidents){const cx=left+(i.lane+.5)*lw,cy=y(i.x);
+ctx.fillStyle='#f37f60';ctx.beginPath();ctx.roundRect(cx-4,cy,8,i.truck?14:9,2);ctx.fill();ctx.fillStyle='#273f46';ctx.fillRect(cx-3,cy+1,6,2);
+// Flashing hazards mark the actual stopped vehicle, not just a warning icon.
+if(Math.floor(sim.elapsed*2)%2===0){ctx.fillStyle='#ffd076';ctx.fillRect(cx-7,cy+1,3,3);ctx.fillRect(cx+4,cy+1,3,3);ctx.fillRect(cx-7,cy+7,3,3);ctx.fillRect(cx+4,cy+7,3,3)}
+ctx.strokeStyle='#f3ac76';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(cx,cy+18);ctx.lineTo(cx-4,cy+25);ctx.lineTo(cx+4,cy+25);ctx.closePath();ctx.stroke();
+ctx.fillStyle='#efb8a0';ctx.font='8px sans-serif';ctx.textAlign='left';ctx.fillText(i.type==='breakdown'?'BREAKDOWN':i.type==='debris'?'DEBRIS':'COLLISION',left+roadW+15,cy+3);ctx.fillText('LANE '+(i.lane+1),left+roadW+15,cy+14)}
+GANTRIES.forEach((g,gi)=>{const gy=y(g);ctx.fillStyle=gi===selected?'#bbdf86':'#6e8880';ctx.fillRect(left-12,gy,roadW+24,3);ctx.fillRect(left-12,gy,3,16);ctx.fillRect(left+roadW+9,gy,3,16);ctx.textAlign='left';ctx.font='bold 9px sans-serif';ctx.fillText(`G0${gi+1}`,left-48,gy+4);sim.signals[gi].forEach((s,l)=>{const x=left+(l+.5)*lw;ctx.fillStyle='#101e24';ctx.fillRect(x-14,gy-14,28,25);ctx.textAlign='center';ctx.font='bold 13px sans-serif';ctx.fillStyle=s.mode==='closed'?'#ff7768':s.mode==='merge'?'#efc676':'#e4ecdf';ctx.fillText(s.mode==='closed'?'×':s.mode==='merge'?l===2?'↖':'↗':s.speed,x,gy+3);if(s.mode==='open'){ctx.strokeStyle='#e57869';ctx.lineWidth=1.3;ctx.beginPath();ctx.arc(x,gy-2,10,0,Math.PI*2);ctx.stroke()}})});ctx.textAlign='center';ctx.fillStyle='#93b29e';ctx.font='9px sans-serif';ctx.fillText('↑     ↑     ↑',w/2,h-18)}
+let last=performance.now(),accumulator=0,seenEvent=0;function frame(now){const delta=Math.min((now-last)/1000,.15);last=now;if(!paused){accumulator+=delta*rate*3;while(accumulator>=.1){sim.step(.1);accumulator-=.1}}if(sim.eventId!==seenEvent){seenEvent=sim.eventId;notify(sim.lastEvent)}draw();$('#flow').innerHTML=`${sim.exits.length*60} <small>veh/h</small>`;$('#speed').innerHTML=`${Math.round(sim.cars.reduce((a,c)=>a+c.v,0)/Math.max(1,sim.cars.length)/.44704)} <small>mph</small>`;$('#vehicles').textContent=sim.cars.length;$('#queue').textContent=`${sim.waiting} waiting at entry`;const minutes=480+Math.floor(sim.elapsed/60);$('#time').textContent=`${String(Math.floor(minutes/60)%24).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`;requestAnimationFrame(frame)}renderControls();requestAnimationFrame(frame);
+</script></body></html>
