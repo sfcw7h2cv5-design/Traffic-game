@@ -395,3 +395,54 @@ test('indexed frozen traffic queries match live scans through dense closure mano
  assert.equal(s.obstacle(car,car.lane).gap,95);
  s.incidents=[];assert(s.obstacle(car,car.lane).gap>95);
 });
+
+test('lane changes steer gently, settle exactly and do not retarget before completion',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(2,2000,20);c.truck=false;c.cooldown=0;c.decision=0;
+ s.signals[1][2].mode='merge-left';
+ let previous=c.visualLane,peak=0,samples=[],length=c.length,completed=false;
+ for(let n=0;n<60;n++){
+  const oldTarget=c.lane,wasTurning=!!c.laneChange;
+  s.step(.1);assert.equal(c.length,length);assert(c.visualLane<=previous+1e-9);
+  if(wasTurning)assert.equal(c.lane,oldTarget,'target changed before steering settled');
+  peak=Math.max(peak,Math.abs(c.laneChangeRate));samples.push(Math.abs(c.laneChangeRate));previous=c.visualLane;
+  if(!c.laneChange&&c.lane===1){completed=true;break;}
+ }
+ assert(completed);assert.equal(c.visualLane,1);assert.equal(c.laneChangeRate,0);
+ assert(samples[0]<peak*.05,'lane change started with a sideways snap');
+ assert(samples.at(-2)<peak*.05,'lane change did not straighten gently');
+ assert(peak>.3&&peak<.5);
+});
+test('HGVs steer more slowly than cars while both occupied lanes remain protected',()=>{
+ for(const truck of [false,true]){
+  const s=new Simulation(seeded());quiet(s);s.cars=[];
+  const c=s.spawn(0,2000,15);c.truck=truck;c.cooldown=0;c.decision=0;
+  s.signals[1][0].mode='merge-right';
+  let duration=0;
+  while(duration<7){s.step(.1);duration+=.1;if(c.laneChange&&Math.abs(c.visualLane-c.lane)>.2)assert.deepEqual(s.occupiedLanes(c),[1,0]);if(c.lane===1&&!c.laneChange)break;}
+  assert(duration>=(truck?5.4:4.4)&&duration<=(truck?5.7:4.7));
+  assert.equal(c.visualLane,1);assert.equal(c.laneChangeRate,0);
+ }
+});
+
+
+test('a faster ordinary driver waits for a real right-hand gap before overtaking',()=>{
+ const s=new Simulation(seeded(93));quiet(s);s.cars=[];
+ const slower=s.spawn(0,2200,18);Object.assign(slower,{truck:true,length:16.5,desired:18,cooldown:Infinity});
+ const fast=s.spawn(0,2110,28);Object.assign(fast,{truck:false,length:4.7,desired:32,cooldown:0,decision:0});
+ const priority=s.spawn(1,2110,28);Object.assign(priority,{truck:false,length:4.7,desired:28,cooldown:Infinity});
+ for(let n=0;n<10;n++){s.step(.1);assert.equal(fast.lane,0,'overtook into the vehicle alongside');}
+ let passedOnRight=false,overtook=false;
+ for(let n=0;n<350;n++){
+  s.step(.1);
+  assert(fast.lane<=1,'ordinary overtake skipped a lane');
+  if(fast.lane===1)passedOnRight=true;
+  if(fast.x>slower.x+slower.length)overtook=true;
+  const bodies=[fast,slower,priority];
+  for(let i=0;i<bodies.length;i++)for(let j=i+1;j<bodies.length;j++){
+   const a=bodies[i],b=bodies[j];if(!s.occupiedLanes(a).some(l=>s.occupiedLanes(b).includes(l)))continue;
+   const front=a.x>=b.x?a:b,back=front===a?b:a;assert(front.x-front.length-back.x>=1.99);
+  }
+ }
+ assert(passedOnRight&&overtook,'driver did not use the available right-hand gap');
+});

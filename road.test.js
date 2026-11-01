@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRoadGeometry,slipRoadPoint,slipRoadEdges,roadworkCones} from './road.js';
+import {createNetworkProjection} from './projection.js';
 import {layoutSprites} from './display.js';
 import {LENGTH,GANTRIES} from './model.js';
 test('narrow curved carriageway and every sign target stay inside mobile and desktop maps',()=>{
@@ -59,5 +60,17 @@ test('joining curve and pavement meet the motorway with matching tangents',()=>{
   assert(sawSeparate&&sawConnected);
   const a=slipRoadPoint(g,r,x-600-.001),b=slipRoadPoint(g,r,x-600+.001);
   assert(Math.abs(a.angle-b.angle)<.00001);
+ }
+});
+
+
+test('queue-expanded road drawing and touch coordinates share a reversible projection',()=>{
+ const cars=Array.from({length:100},(_,id)=>({id,x:7000-id*7,lane:0,visualLane:0,length:4.7}));
+ const p=createNetworkProjection(cars,[],{length:LENGTH,height:1053.75,gantries:GANTRIES,iconHeight:()=>3.6});
+ const g=createRoadGeometry(390,Math.round(p.requiredHeight),LENGTH,LENGTH,0,p);
+ for(let x=0;x<=LENGTH;x+=25){
+  assert(Math.abs(g.unproject(g.project(x))-x)<1e-7);
+  assert(Math.abs(g.centerAtY(g.project(x))-g.center(x))<1e-7);
+  assert(g.scaleAt(x)>0&&Number.isFinite(g.angleAt(x)));
  }
 });

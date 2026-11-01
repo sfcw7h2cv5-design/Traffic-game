@@ -185,3 +185,53 @@ test('work crews respect a vehicle still travelling through the longer joining c
  assert.equal(c.onRamp,r.id);assert.equal(o.work.sceneId,null);assert.equal(o.work.status,'awaiting-protection');
  s.cars=[];run(s,.1);assert.equal(o.work.status,'working');
 });
+
+test('a clear slip road accelerates through entry without stopping or resetting speed',()=>{
+ const s=setup(),r=s.systems.ramps[0],c=queuedCar(s,r);
+ c.truck=false;c.length=4.7;c.desired=31;c.acceleration=1.4;c.v=12;c.rampDistance=r.approachLength;c.x=r.x-c.rampDistance;
+ let minimum=c.v,before=c.x,transferred=false;
+ for(let n=0;n<500;n++){
+  const oldV=c.v;s.step(.1);minimum=Math.min(minimum,c.v);
+  assert(c.x>=before);assert(c.x-before<4,'entry integrated the vehicle twice');
+  if(s.cars.includes(c)){
+   assert(c.v>=oldV-.01,'entry reset the matched speed');
+   assert(c.v>25,'clear-road entry remained capped at 40 mph');
+   assert.equal(c.x,r.x-r.mergeLength);transferred=true;break;
+  }
+  before=c.x;
+ }
+ assert(transferred);assert(minimum>=12);assert.equal(c.length,4.7);assert.equal(r.queue.length,0);
+ const x=c.x;s.step(.1);assert(c.x-x>2.5);assert(c.x-x<4);
+});
+test('slip-road traffic times a moving gap behind priority traffic without a stop',()=>{
+ const s=setup(),r=s.systems.ramps[0],entry=r.x-r.mergeLength,c=queuedCar(s,r);
+ c.truck=false;c.length=4.7;c.desired=31;c.acceleration=1.4;c.v=20;c.rampDistance=r.mergeLength+200;c.x=r.x-c.rampDistance;
+ const priority=s.spawn(0,entry-250,30);priority.truck=false;priority.length=4.7;priority.desired=30;priority.v=30;priority.courtesy=1;priority.cooldown=priority.decision=Infinity;
+ let minimum=c.v,transferred=false,before=c.x;
+ for(let n=0;n<600;n++){
+  s.step(.1);minimum=Math.min(minimum,c.v);assert(c.x>=before);assert(c.x-before<4);before=c.x;
+  assert(priority.v>29.9,'priority traffic braked for a slip-road arrival');
+  if(s.cars.includes(c)){
+   assert(priority.x-priority.length-c.x>8+c.v*1.2);
+   transferred=true;break;
+  }
+ }
+ assert(transferred);assert(minimum>8,'approach planning unnecessarily stopped for the moving gap');
+});
+test('a slow arrival still yields to fast traffic already close behind the entry',()=>{
+ const s=setup(),r=s.systems.ramps[0],entry=r.x-r.mergeLength,c=queuedCar(s,r);
+ c.truck=false;c.length=4.7;c.desired=31;c.acceleration=1.4;c.v=12;
+ const priority=s.spawn(0,entry-80,30);priority.truck=false;priority.length=4.7;priority.desired=30;priority.v=30;priority.courtesy=1;priority.cooldown=priority.decision=Infinity;
+ const before=priority.x;run(s,1);
+ assert(r.queue.includes(c));assert(!s.cars.includes(c));assert(priority.x-before>29.9);assert(priority.v>29.9);
+});
+test('approach matching respects HGV desired speeds and posted approach limits',()=>{
+ for(const [truck,desired,limit] of [[true,24,70],[false,31,40]]){
+  const s=setup(),r=s.systems.ramps[0],c=queuedCar(s,r),entry=r.x-r.mergeLength;
+  c.truck=truck;c.desired=desired;c.v=12;c.rampDistance=r.approachLength;c.x=r.x-c.rampDistance;
+  const g=GANTRIES.findLastIndex(x=>x<=entry);s.signals[g][0].speed=limit;
+  const ceiling=Math.min(desired,limit*.44704);let joined=false;
+  for(let n=0;n<600;n++){s.step(.1);assert(c.v<=ceiling+1e-8);if(s.cars.includes(c)){joined=true;break;}}
+  assert(joined);assert(c.v>ceiling-1);
+ }
+});

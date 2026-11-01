@@ -67,7 +67,7 @@ export class Simulation {
       courtesy: .96 + this.random() * .06,
       reckless: this.random() < .08,
       cooldown: this.random() * 4, decision: this.random(),
-      restart: 0, a: 0, braking: false,
+      restart: 0, a: 0, braking: false, laneChange: null, laneChangeRate: 0,
     };
     if(kind==='roadblock'){car.desired=9;car.acceleration=.8;}
     if(car.emergency){car.desired=(kind==='police'?110:100)*.44704;car.acceleration=3;car.headway=1.1;car.reaction=.35;car.courtesy=1;car.cooldown=0;car.decision=0;}
@@ -330,7 +330,7 @@ export class Simulation {
       else c.evacuationGoal=null;
       const evacuationSteps=forced&&c.evacuationGoal!=null?[c.lane+Math.sign(c.evacuationGoal-c.lane)]:[];
       c.mergeRequest=forced&&evacuationSteps.length&&Math.abs(c.visualLane-c.lane)<=.02?evacuationSteps[0]:null;
-      if (c.decision <= 0 && (c.cooldown <= 0 || forced || approachingSiren || c.emergency) && Math.abs(c.visualLane - c.lane) <= .02) {
+      if (c.decision <= 0 && (c.cooldown <= 0 || forced || approachingSiren || c.emergency) && !c.laneChange && Math.abs(c.visualLane - c.lane) <= .02) {
         c.decision = (c.emergency||approachingSiren)?.25+this.random()*.25:.7+this.random()*.8;
         let target = c.lane;
         const safe = lane => {
@@ -371,7 +371,10 @@ export class Simulation {
             if (right.gap > front.gap + 20 || right.speed > front.speed + 2) target = c.lane + 1;
           }
         }
-        if (target !== c.lane) { c.fromLane = c.lane; c.lane = target; c.cooldown = 8 + this.random() * 4;c.mergeRequest=null; }
+        if (target !== c.lane) {
+          c.laneChange={from:c.visualLane,to:target,progress:0,duration:c.truck?5.5:4.5};
+          c.fromLane = c.lane; c.lane = target; c.cooldown = 8 + this.random() * 4;c.mergeRequest=null;
+        }
       }
     }
     // One waiting merger may ask its nearest rear neighbour to make space.
@@ -434,7 +437,18 @@ export class Simulation {
       const move = Math.min(Math.max(0, front.gap - 2), requested);
       c.x += move; c.v = move < requested ? move / dt : nextV;
       c.braking = c.a < -.6;
-      c.visualLane += (c.lane - c.visualLane) * Math.min(1, dt * .85);
+      // Steering eases into and out of a committed manoeuvre. Keep a bounded
+      // time profile at walking pace too, so a stopped driver can escape a red X
+      // without disabling the original lane's bumper protection.
+      if(!c.laneChange&&Math.abs(c.visualLane-c.lane)>1e-7)c.laneChange={from:c.visualLane,to:c.lane,progress:0,duration:c.truck?5.5:4.5};
+      const turn=c.laneChange;
+      if(turn){
+        turn.progress=Math.min(1,turn.progress+dt/turn.duration);
+        const t=turn.progress,ease=t*t*t*(10+t*(-15+6*t));
+        c.visualLane=turn.from+(turn.to-turn.from)*ease;
+        c.laneChangeRate=(turn.to-turn.from)*30*t*t*(1-t)*(1-t)/turn.duration;
+        if(t>=1){c.visualLane=turn.to;c.laneChangeRate=0;c.laneChange=null;}
+      }else c.laneChangeRate=0;
     }
     this.enforceSeparation();
     this.cars = this.cars.filter(c => {

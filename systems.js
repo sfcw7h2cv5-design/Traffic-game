@@ -12,23 +12,51 @@ export class NetworkSystems {
  }
  announce(text){this.sim.lastEvent=text;this.sim.eventId++;}
  setRampMode(id,mode){if(!['open','closed'].includes(mode)||!this.ramps[id])return false;this.ramps[id].mode=mode;return true;}
- rampGap(ramp){
+ rampTraffic(){return this.sim.cars.filter(c=>this.sim.occupiedLanes(c).includes(0));}
+ rampCruise(ramp,traffic=this.rampTraffic()){
+  const s=this.sim,car=ramp.queue[0],entry=ramp.x-ramp.mergeLength;
+  let weighted=0,weight=0;
+  for(const c of traffic){const d=Math.abs(c.x-entry);if(d>500)continue;const w=1/(50+d);weighted+=c.v*w;weight+=w;}
+  const limit=s.signalAt(entry,0).speed*.44704;
+  return Math.max(0,Math.min(car?.desired??limit,limit,weight?Math.max(2,weighted/weight):limit));
+ }
+ rampGap(ramp,{time=0,v=ramp.queue[0]?.v??0,traffic=this.rampTraffic()}={}){
   const s=this.sim,x=ramp.x-ramp.mergeLength,car=ramp.queue[0];
   // Motorway signs guide lane changes after the joining taper; they are not
   // slip-road stop signals. Keep entry available while an onward lane is open.
   const next=this.gantries.findIndex(g=>g>ramp.x);
   if([0,1,2].every(l=>s.signalAt(ramp.x,l).mode==='closed')||next>=0&&this.gantries[next]-ramp.x<650&&s.signals[next].every(signal=>signal.mode==='closed'))return null;
-  // Test the entire physical joining corridor, including long work zones whose
-  // front may be well beyond the junction, without holding for incidents behind it.
   if(s.incidentBodies().some(i=>i.lane===0&&i.x>=x-(car?.length??5)-2&&i.x-i.length<=ramp.x+2))return null;
   if(s.cars.some(c=>c.lane<0&&Math.abs(c.x-x)<100))return null;
-  const traffic=s.cars.filter(c=>s.occupiedLanes(c).includes(0));
-  const front=traffic.filter(c=>c.x>=x).sort((a,b)=>a.x-b.x)[0];
-  const rear=traffic.filter(c=>c.x<x).sort((a,b)=>b.x-a.x)[0];
-  const v=Math.min(18,front?.v??18);
-  if(front&&front.x-front.length-x<8+v*1.5)return null;
-  if(rear&&x-(car?.length??5)-rear.x<8+rear.v*1.5+Math.max(0,rear.v-v)*2)return null;
+  let front=null,rear=null,frontX=Infinity,rearX=-Infinity;
+  for(const c of traffic){
+   const projected=c.x+c.v*time;
+   if(projected>=x&&projected<frontX){front=c;frontX=projected;}
+   else if(projected<x&&projected>rearX){rear=c;rearX=projected;}
+  }
+  // A merge must not make the priority traffic brake for a slower arrival.
+  // Evaluate actual speed at transfer, and predicted speed only while planning.
+  if(front&&frontX-front.length-x<8+v*1.2+Math.max(0,v-front.v)*3)return null;
+  if(rear&&x-(car?.length??5)-rearX<8+rear.v*1.5+Math.max(0,rear.v-v)*3)return null;
   return {v};
+ }
+ rampApproach(ramp,traffic){
+  const c=ramp.queue[0],distance=Math.max(0,c.rampDistance-ramp.mergeLength),cruise=this.rampCruise(ramp,traffic);
+  const stopping=Math.sqrt(2*2*distance);
+  if(ramp.mode!=='open')return Math.min(cruise,stopping);
+  if(distance<.001)return this.rampGap(ramp,{traffic})?cruise:0;
+  // Adjust arrival time on the approach, rather than driving to a permanent
+  // stop line and restarting for every gap. Recheck actual traffic at transfer.
+  const acceleration=Math.max(.2,c.acceleration);
+  const accelerationTime=Math.max(0,(cruise-c.v)/acceleration);
+  const accelerationDistance=(c.v+cruise)*.5*accelerationTime;
+  const eta=distance<=accelerationDistance?(Math.sqrt(c.v*c.v+2*acceleration*distance)-c.v)/acceleration:accelerationTime+(distance-accelerationDistance)/Math.max(2,cruise);
+  for(const delay of [0,.5,1,2,3,5,8]){
+   const target=Math.max(0,Math.min(cruise,2*distance/Math.max(.001,eta+delay)-c.v));
+   const entrySpeed=Math.min(target,Math.sqrt(c.v*c.v+2*acceleration*distance));
+   if(this.rampGap(ramp,{time:eta+delay,v:entrySpeed,traffic}))return target;
+  }
+  return Math.min(cruise,stopping);
  }
  updateRamps(dt){
   const s=this.sim;
@@ -38,19 +66,31 @@ export class NetworkSystems {
     const tail=r.queue.at(-1);c.rampDistance=Math.max(r.approachLength,tail?tail.rampDistance+tail.length+10:r.approachLength);c.slipRamp=r.id;c.v=12;r.queue.push(c);
     r.nextArrival=s.elapsed+(22+s.random()*10)/this.phase.multiplier;
    }
-   const gap=this.rampGap(r);r.releasing=r.mode==='open'&&!!gap;
+   if(!r.queue.length){r.releasing=false;continue;}
+   const traffic=this.rampTraffic(),approach=this.rampApproach(r,traffic);
+   r.releasing=r.mode==='open'&&!!this.rampGap(r,{traffic});
    for(let i=0;i<r.queue.length;i++){
     const c=r.queue[i],leader=r.queue[i-1];
     const available=leader?Math.max(0,c.rampDistance-leader.rampDistance-leader.length-5):Math.max(0,c.rampDistance-r.mergeLength);
-    const target=Math.min(22,c.desired,leader?Math.sqrt(2*1.5*available):r.releasing?gap.v:Math.sqrt(2*1.5*available));
+    const target=Math.min(c.desired,leader?Math.sqrt(2*1.5*available):approach);
     const next=Math.max(0,c.v+Math.max(-2.5,Math.min(c.acceleration,(target-c.v)*.8))*dt);
-    const move=Math.min(available,Math.max(0,(c.v+next)*.5*dt));
-    c.rampDistance-=move;c.x=r.x-c.rampDistance;c.v=r.releasing&&!leader?next:move<Math.max(0,(c.v+next)*.5*dt)?move/dt:next;
+    const requested=Math.max(0,(c.v+next)*.5*dt),move=Math.min(available,requested);
+    c.rampDistance-=move;c.x=r.x-c.rampDistance;
+    c.v=!leader&&r.mode==='open'&&(r.releasing||approach>0)?next:move<requested?move/dt:next;
    }
-   if(r.releasing&&r.queue.length&&r.queue[0].rampDistance<=r.mergeLength+.001){
-    const c=r.queue.shift();c.x=r.x-c.rampDistance;c.v=Math.min(c.v,gap.v);c.onRamp=r.id;c.rampProgress=0;c.cooldown=8;c.decision=2;s.cars.push(c);
-    r.lastRelease=s.elapsed;r.joined++;
-   }
+  }
+ }
+ releaseRamps(){
+  const s=this.sim;
+  for(const r of this.ramps){
+   const c=r.queue[0];
+   if(!c||c.rampDistance>r.mergeLength+.001)continue;
+   const gap=r.mode==='open'?this.rampGap(r):null;
+   if(!gap){c.v=0;r.releasing=false;continue;}
+   // Mainline traffic has advanced first and keeps priority. Commit the car
+   // once, retaining its matched speed instead of integrating it twice.
+   r.queue.shift();c.x=r.x-c.rampDistance;c.onRamp=r.id;c.rampProgress=0;c.cooldown=8;c.decision=2;s.cars.push(c);
+   r.releasing=true;r.lastRelease=s.elapsed;r.joined++;
   }
  }
  protectionGantry(){return this.gantries.findLastIndex(g=>g<this.work.x-this.work.length-50);}
@@ -117,6 +157,7 @@ export class NetworkSystems {
  }
  recordExit(c){this.totalExited++;if(c.kind==='ambulance')this.ambulancesExited++;}
  afterStep(){
+  this.releaseRamps();
   const stopped=this.sim.cars.filter(c=>c.lane>=0&&!c.emergency&&c.v<.5).length;
   if(stopped>=5&&!this.queueSeen){this.queueSeen=true;this.queueSeenAt=this.sim.elapsed;}
   const queueCleared=this.queueSeen&&stopped<=1&&this.sim.elapsed>this.queueSeenAt+20;
