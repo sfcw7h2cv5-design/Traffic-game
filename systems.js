@@ -13,14 +13,19 @@ export class NetworkSystems {
  announce(text){this.sim.lastEvent=text;this.sim.eventId++;}
  setRampMode(id,mode){if(!['open','closed'].includes(mode)||!this.ramps[id])return false;this.ramps[id].mode=mode;return true;}
  rampGap(ramp){
-  const s=this.sim,x=ramp.x-120;
-  if(s.signalAt(x,0).mode!=='open'||this.gantries.some((g,i)=>g>x&&g-x<400&&s.signals[i][0].mode!=='open'))return null;
-  if(s.incidentBodies().some(i=>i.lane===0&&Math.abs(i.x-x)<180))return null;
+  const s=this.sim,x=ramp.x-120,car=ramp.queue[0];
+  // Motorway signs guide lane changes after the joining taper; they are not
+  // slip-road stop signals. Keep entry available while an onward lane is open.
+  const next=this.gantries.findIndex(g=>g>ramp.x);
+  if([0,1,2].every(l=>s.signalAt(ramp.x,l).mode==='closed')||next>=0&&this.gantries[next]-ramp.x<650&&s.signals[next].every(signal=>signal.mode==='closed'))return null;
+  // Test the entire physical joining corridor, including long work zones whose
+  // front may be well beyond the junction, without holding for incidents behind it.
+  if(s.incidentBodies().some(i=>i.lane===0&&i.x>=x-(car?.length??5)-2&&i.x-i.length<=ramp.x+2))return null;
   if(s.cars.some(c=>c.lane<0&&Math.abs(c.x-x)<100))return null;
   const traffic=s.cars.filter(c=>s.occupiedLanes(c).includes(0));
   const front=traffic.filter(c=>c.x>=x).sort((a,b)=>a.x-b.x)[0];
   const rear=traffic.filter(c=>c.x<x).sort((a,b)=>b.x-a.x)[0];
-  const v=Math.min(18,front?.v??18),car=ramp.queue[0];
+  const v=Math.min(18,front?.v??18);
   if(front&&front.x-front.length-x<8+v*1.5)return null;
   if(rear&&x-(car?.length??5)-rear.x<8+rear.v*1.5+Math.max(0,rear.v-v)*2)return null;
   return {v};

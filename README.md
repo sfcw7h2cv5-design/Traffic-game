@@ -34,7 +34,7 @@ Courtesy yielding is assigned only to the nearest suitable rear neighbour of a w
 
 ## Network operations and optional shift goals
 
-Three slip roads join at J1 (1.2 km), J2 (5.9 km) and J3 (9.0 km). Each defaults to Open, with only an emergency Closed setting. Vehicles follow a physical 700 m approach and gradual 120 m join into lane 1, yielding to mainline traffic. The same vehicle symbols are used throughout; no timed traffic-light metering. Roadwork cones form a 250 m diagonal taper across the closed lanes, followed by the work-area boundary. The whole taper is checked clear before deployment.
+Three slip roads join at J1 (1.2 km), J2 (5.9 km) and J3 (9.0 km). Each defaults to Open, with only an emergency Closed setting. Vehicles follow a physical 700 m approach and gradual 120 m join into lane 1, yielding to mainline traffic. A motorway lane closure or merge arrow does not close the slip road: drivers finish the lane 1 joining taper, then follow the motorway controls towards an open lane. Physical traffic gaps and obstructions still take priority, and the slip road’s own Closed control holds arrivals. Arrivals also wait when every onward motorway lane is closed. The same vehicle symbols are used throughout; no timed traffic-light metering. Roadwork cones form a 250 m diagonal taper across the closed lanes, followed by the work-area boundary. The whole taper is checked clear before deployment.
 
 Demand automatically cycles through normal traffic, morning rush, easing traffic and stadium departures. Both upstream arrivals and junction demand change; the current phase is visible above the map.
 
