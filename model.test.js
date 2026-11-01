@@ -282,3 +282,38 @@ test('traffic can navigate successive closures whose open lane changes',()=>{
  s.signals[2][0].mode=s.signals[2][2].mode='closed';
  for(let n=0;n<1000&&c.x<2800;n++)s.step(.1);assert(c.x>=2800);assert.equal(c.lane,1);
 });
+
+test('a driver merges around an incident once and stays out until it is passed',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ s.addIncident(0,2200,'breakdown');s.incidents[0].dispatchAt=Infinity;
+ const c=s.spawn(0,1500,25);c.truck=false;c.length=4.7;c.desired=30;c.cooldown=0;c.decision=0;
+ const changes=[];let old=c.lane;
+ for(let i=0;i<600;i++){s.step(.1);if(c.lane!==old){changes.push({from:old,to:c.lane,x:c.x});old=c.lane;}}
+ assert(changes.some(t=>t.from===0&&t.to===1));
+ assert(changes.filter(t=>t.to===0).every(t=>t.x>2220));assert(changes.length<=2);
+});
+test('an incident in another lane does not slow free traffic',()=>{
+ const speeds=[];
+ for(const incident of [false,true]){
+  const s=new Simulation(seeded());quiet(s);s.cars=[];
+  if(incident){s.addIncident(0,2200,'breakdown');s.incidents[0].dispatchAt=Infinity;}
+  const c=s.spawn(1,1900,28);c.truck=false;c.desired=31;c.cooldown=1000;
+  run(s,20);speeds.push(c.v);
+ }
+ assert(Math.abs(speeds[0]-speeds[1])<.5);
+});
+test('a staged closure evacuation keeps its chosen destination instead of reversing',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ s.signals[1][1].mode='closed';s.signals[1][2].mode='closed';
+ const c=s.spawn(2,1538,0);c.truck=false;c.cooldown=0;c.decision=0;
+ const lanes=[c.lane];let old=c.lane;
+ for(let i=0;i<350;i++){s.step(.1);if(c.lane!==old){lanes.push(c.lane);old=c.lane;}}
+ assert.deepEqual(lanes,[2,1,0]);
+});
+
+test('closing all lanes cancels a previously chosen escape destination',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const c=s.spawn(0,1538,0);c.cooldown=0;c.decision=0;c.evacuationGoal=2;
+ for(const signal of s.signals[1])signal.mode='closed';run(s,10);
+ assert.equal(c.evacuationGoal,null);assert.equal(c.lane,0);assert(c.x<1550);
+});

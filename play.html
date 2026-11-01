@@ -152,6 +152,9 @@ class Simulation {
     this.eventId++;
     return incident;
   }
+  laneHazardAhead(x,lane,distance=650){
+    return this.incidentBodies().some(i=>i.lane===lane&&i.x>=x-25&&i.x-x<distance);
+  }
   incidentBodies(){
     return this.incidents.flatMap(i=>i.bodies?i.bodies.map((b,n)=>({...i,...b,bodyIndex:n,static:true,visualLane:b.lane,fromLane:b.lane})):[{...i,bodyIndex:0,static:true,visualLane:i.lane,fromLane:i.lane}]);
   }
@@ -284,22 +287,25 @@ class Simulation {
       const upcoming = GANTRIES.findIndex((x, g) => x > c.x && x - c.x < 650 && this.signals[g][c.lane].mode !== 'open');
       const warning = sig.mode!=='open'?sig:upcoming>=0?this.signals[upcoming][c.lane]:sig;
       const approachingSiren=!c.emergency&&snapshot.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<600);
-      const forced = sig.mode !== 'open' || upcoming >= 0 || (front.gap < 160 && front.speed < 3);
+      const forced = sig.mode !== 'open' || upcoming >= 0 || this.laneHazardAhead(c.x,c.lane);
       // Plan a route to an actually open lane, one adjacent lane at a time.
       // Two adjacent red Xs must not strand a driver in the inner closed lane.
-      const destinations=[0,1,2].filter(l=>l!==c.lane&&(sig.mode!=='open'||upcoming<0?this.signalAt(c.x,l).mode==='open':this.signals[upcoming][l].mode==='open'));
+      const destinations=[0,1,2].filter(l=>l!==c.lane&&!this.laneHazardAhead(c.x,l)&&(sig.mode!=='open'||upcoming<0?this.signalAt(c.x,l).mode==='open':this.signals[upcoming][l].mode==='open'));
       const preferred=warning.mode.startsWith('merge')?Math.sign(this.mergeTarget(warning.mode,c.lane)-c.lane):0;
       destinations.sort((a,b)=>{
         const pa=preferred&&Math.sign(a-c.lane)!==preferred?1:0,pb=preferred&&Math.sign(b-c.lane)!==preferred?1:0;
-        return pa-pb||Math.abs(a-c.lane)-Math.abs(b-c.lane);
+        return Number(b===c.evacuationGoal)-Number(a===c.evacuationGoal)||pa-pb||Math.abs(a-c.lane)-Math.abs(b-c.lane);
       });
-      const evacuationSteps=[...new Set(destinations.map(l=>c.lane+Math.sign(l-c.lane)))];
+      if(forced&&destinations.length)c.evacuationGoal=destinations[0];
+      else c.evacuationGoal=null;
+      const evacuationSteps=forced&&c.evacuationGoal!=null?[c.lane+Math.sign(c.evacuationGoal-c.lane)]:[];
+      c.mergeRequest=forced&&evacuationSteps.length&&Math.abs(c.visualLane-c.lane)<=.02?evacuationSteps[0]:null;
       if (c.decision <= 0 && (c.cooldown <= 0 || forced || approachingSiren || c.emergency) && Math.abs(c.visualLane - c.lane) <= .02) {
         c.decision = (c.emergency||approachingSiren)?.25+this.random()*.25:.7+this.random()*.8;
         let target = c.lane;
         const safe = lane => {
           const escape=forced&&evacuationSteps.includes(lane);
-          if(lane<0||lane>2||(c.truck&&lane===2&&!forced)||(this.signalAt(c.x,lane).mode!=='open'&&!escape))return false;
+          if(lane<0||lane>2||(!escape&&this.laneHazardAhead(c.x,lane))||(c.truck&&lane===2&&!forced)||(this.signalAt(c.x,lane).mode!=='open'&&!escape))return false;
           if(!escape&&GANTRIES.some((x,g)=>x>c.x&&x-c.x<650&&this.signals[g][lane].mode!=='open'))return false;
           const ahead = this.obstacle(c, lane, this.cars);
           const behind = this.cars.filter(o => o.id !== c.id && (o.lane === lane || (Math.abs(o.visualLane-o.lane)>.02&&o.fromLane===lane)) && o.x < c.x)
@@ -323,7 +329,7 @@ class Simulation {
           const left = c.lane - 1;
           if (!c.emergency && left >= 0 && safe(left)) {
             const gap = this.obstacle(c, left, snapshot);
-            if (gap.gap > Math.max(65, c.v * 3.5) || gap.speed >= Math.min(c.desired, sig.speed * .44704) - 1) target = left;
+            if (gap.gap > Math.max(120, c.v * 8) || gap.speed >= Math.min(c.desired, sig.speed * .44704) - 1) target = left;
           }
           const catching = front.gap < Math.max(75, c.v * 3.8) && front.speed < Math.min(c.desired, this.speedTarget(c)) - 2;
           if(c.emergency&&target===c.lane&&catching){
@@ -335,7 +341,7 @@ class Simulation {
             if (right.gap > front.gap + 20 || right.speed > front.speed + 2) target = c.lane + 1;
           }
         }
-        if (target !== c.lane) { c.fromLane = c.lane; c.lane = target; c.cooldown = 5 + this.random() * 4; }
+        if (target !== c.lane) { c.fromLane = c.lane; c.lane = target; c.cooldown = 8 + this.random() * 4;c.mergeRequest=null; }
       }
     }
     const movementSnapshot=this.cars.map(c=>({...c}));
@@ -358,13 +364,10 @@ class Simulation {
       const limit = this.speedTarget(c);
       let desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
       const yielding=movementSnapshot.some(o=>{
-        if(o.lane<0||o.id===c.id||Math.abs(o.lane-c.lane)!==1||o.x<c.x+5||o.x>c.x+120)return false;
-        const current=this.signalAt(o.x,o.lane);
-        const next=GANTRIES.findIndex((x,g)=>x>o.x&&x-o.x<350&&this.signals[g][o.lane].mode!=='open');
-        const warning=next>=0?this.signals[next][o.lane]:current;
-        if(warning.mode==='open')return false;
-        const target=warning.mode.startsWith('merge')?this.mergeTarget(warning.mode,o.lane):(o.lane<c.lane?o.lane+1:o.lane-1);
-        return target===c.lane&&this.signalAt(c.x,c.lane).mode==='open';
+        if(o.id===c.id||o.mergeRequest!==c.lane||o.x<c.x+5||o.x>c.x+120)return false;
+        const gap=o.x-o.length-c.x;
+        const needed=5+c.v*.9+Math.max(0,c.v-o.v)*2;
+        return gap<needed+8;
       });
       if(yielding&&!c.emergency)desired=Math.min(desired,Math.max(4,c.v-1.2));
       const headway = c.headway * (rain ? 1.35 : unruly ? .65 : 1);
