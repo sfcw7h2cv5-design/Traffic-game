@@ -23,7 +23,7 @@ test('a driver returns left on a clear road, and overtakes a slower HGV on the r
  run(s, 2);assert.equal(fast.lane, 1);
 });
 test('automatic breakdowns always occupy the left lane and retain a stopped vehicle', () => {
- const s = new Simulation(() => .4); s.nextIncident = 0; s.step(.1);
+ const s = new Simulation(() => .2); s.nextIncident = 0; s.step(.1);
  assert.equal(s.incidents.length, 1); assert.equal(s.incidents[0].lane, 0);
  assert.equal(s.incidents[0].type, 'breakdown');assert(s.incidents[0].length > 0);assert(s.lastEvent.includes('Lane 1'));
  assert.equal(s.addIncident(2, 1800).lane, 0);
@@ -111,7 +111,7 @@ test('dense traffic never overlaps, including lane-change reservations and incid
    const before=new Map(s.cars.map(c=>[c.id,c.x]));
    s.step(.1);
    for(const c of s.cars)if(before.has(c.id))assert(c.x>=before.get(c.id)-1e-7,`vehicle moved backwards: ${c.id} at ${s.elapsed}`);
-   const bodies=[...s.cars,...s.incidents.map(i=>({...i,visualLane:i.lane,fromLane:i.lane}))];
+   const bodies=[...s.cars,...s.incidentBodies()];
    for(let a=0;a<bodies.length;a++)for(let b=a+1;b<bodies.length;b++){
     const x=bodies[a],y=bodies[b];
     if(!s.occupiedLanes(x).some(l=>s.occupiedLanes(y).includes(l)))continue;
@@ -205,4 +205,45 @@ test('automatic breakdowns convert real settled vehicles rather than materialisi
  const c=s.spawn(0,2200,20);const incident=s.addIncident(0,2200,'breakdown',{requireVehicle:true});
  assert(incident);assert.equal(incident.vehicleId,c.id);assert.equal(incident.x,c.x);assert(!s.cars.includes(c));
  s.dispatchRecovery(incident);const tow=s.cars.find(c=>c.kind==='recovery');assert(tow.x<=0);
+});
+
+test('shed loads block both affected lanes while leaving the third lane usable',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const incident=s.addMultiLaneIncident('shed-load',2200,[0,1]);assert(incident);
+ assert.equal(s.incidents.length,1);assert.deepEqual(incident.lanes,[0,1]);
+ const car={id:-1,x:2100,desired:30,length:4.7};
+ assert.equal(s.obstacle(car,0).speed,0);assert.equal(s.obstacle(car,1).speed,0);assert(s.obstacle(car,2).gap>500);
+ assert.equal(s.incidentBodies().length,2);assert(s.lastEvent.includes('Lanes 1 & 2'));
+ run(s,430);assert.equal(s.incidents.length,0);
+});
+test('pile-ups convert real vehicles in both lanes without phantom cars',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const a=s.spawn(1,2200,20),b=s.spawn(2,2220,22);a.truck=b.truck=false;
+ const incident=s.addMultiLaneIncident('pile-up',2200,[1,2]);assert(incident);assert.equal(s.cars.length,0);
+ assert.deepEqual(incident.bodies.map(x=>x.vehicleId),[a.id,b.id]);
+ assert.deepEqual(s.incidentBodies().map(i=>i.lane),[1,2]);
+});
+test('shed loads do not appear on top of existing or merging vehicles',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ for(let x=2050;x<=2350;x+=10)s.spawn(0,x,0);
+ assert.equal(s.addMultiLaneIncident('shed-load',2200,[0,1]),null);
+});
+test('explicit middle-lane arrows work in either direction',()=>{
+ for(const [mode,target] of [['merge-left',0],['merge-right',2]]){
+  const s=new Simulation(seeded());quiet(s);s.cars=[];
+  const c=s.spawn(1,2200,20);c.truck=false;c.cooldown=0;c.decision=0;s.signals[1][1].mode=mode;run(s,5);
+  assert.equal(c.lane,target);
+ }
+});
+test('emergency vehicles can pass a slower right-lane vehicle on a clear adjacent lane',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];
+ const front=s.spawn(2,1300,28);front.truck=false;front.desired=28;front.cooldown=1000;
+ const police=s.spawn(2,1100,38,'police');run(s,25);
+ assert(police.x>front.x+25);assert(police.v/.44704>95);
+});
+test('clear-road police and ambulance reach the higher response speeds quickly',()=>{
+ for(const [kind,minimum] of [['police',100],['ambulance',90]]){
+  const s=new Simulation(seeded());quiet(s);s.cars=[];
+  const c=s.spawn(2,1000,30,kind);run(s,20);assert(c.v/.44704>minimum);
+ }
 });

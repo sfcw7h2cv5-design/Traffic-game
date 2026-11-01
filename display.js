@@ -3,7 +3,7 @@
 // Detail uses larger fixed symbols. Thus every vehicle stays visible in queues.
 export function layoutSprites(cars, incidents, {left,laneWidth,project,overview=false}) {
  const scale=Math.abs(project(1)-project(0));
- return [...cars.map(c=>({...c,static:false})),...incidents.map(i=>({...i,visualLane:i.lane,static:true}))].map(c=>{
+ return [...cars.map(c=>({...c,static:false})),...incidents.flatMap(i=>(i.bodies??[{lane:i.lane,x:i.x,length:i.length,truck:i.truck,vehicleId:i.vehicleId}]).map((body,n)=>({...i,...body,bodyIndex:n,visualLane:body.lane,static:true})))].map(c=>{
   const width=c.kind==='ambulance'?7:c.kind==='recovery'||c.truck?8:5;
   const designHeight=c.towing||c.kind==='recovery'?20:c.truck?13:c.kind==='ambulance'?10:6;
   const length=c.length??(c.kind==='recovery'?16:c.truck?16.5:c.kind==='ambulance'?7:4.7);
