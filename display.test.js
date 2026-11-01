@@ -59,8 +59,15 @@ test('full-network overview draws every vehicle without density-dependent resizi
  cars.push({id:100,x:1900,lane:2,visualLane:2,emergency:true,kind:'police',v:35,length:4.7});
  const incidents=[{id:1,x:2550,lane:0,type:'breakdown',length:4.7}];
  const overview=layoutSprites(cars,incidents,{left:90,laneWidth:55,project:x=>550-x*.085,overview:true});
- const visible=overview.filter(c=>c.visible);separated(visible);
+ const visible=overview.filter(c=>c.visible);
  assert.equal(visible.length,overview.length);assert(visible.some(c=>c.static));assert(visible.some(c=>c.emergency));
- assert(overview.every(c=>c.height===c.nominalHeight));assert.equal(overview.length,61+incidents.length);
+ assert(overview.every(c=>c.height===c.nominalHeight&&c.height===6));assert.equal(overview.length,61+incidents.length);
 
+});
+
+test('overview uses the same recognisable car, HGV and emergency icons as detail',()=>{
+ const cars=[{id:1,x:1000,lane:0,visualLane:0},{id:2,x:1300,lane:1,visualLane:1,truck:true},{id:3,x:1600,lane:2,visualLane:2,kind:'ambulance'},{id:4,x:2000,lane:2,visualLane:2,kind:'police'},{id:5,x:2500,lane:-1,visualLane:-1,kind:'recovery'}];
+ const detail=layoutSprites(cars,[],options),overview=layoutSprites(cars,[],{...options,project:x=>550-x*.085,overview:true});
+ for(const c of overview){const d=detail.find(x=>x.id===c.id);assert.deepEqual([c.width,c.height],[d.width,d.height]);assert.equal(c.cy,550-c.x*.085);assert.equal(c.height,c.designHeight);}
+ assert(overview.find(c=>c.truck).height>overview.find(c=>c.id===1).height);
 });

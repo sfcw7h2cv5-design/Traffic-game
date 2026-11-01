@@ -3,6 +3,38 @@ export const LENGTH = 10000;
 export const GANTRIES = [450, 1550, 2650, 3750, 4850, 6450, 8050];
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
+// Snapshot only fields used by neighbour queries. Driver state stays on the live
+// vehicle; every following calculation still reads the same frozen time step.
+function trafficSnapshot(cars){
+  return cars.map(c=>({id:c.id,lane:c.lane,fromLane:c.fromLane,visualLane:c.visualLane,x:c.x,v:c.v,length:c.length,emergency:c.emergency}));
+}
+function trafficIndex(traffic){
+  const lanes=new Map();
+  for(let order=0;order<traffic.length;order++){
+    const car=traffic[order],occupied=Math.abs(car.visualLane-car.lane)>.2&&car.fromLane!==car.lane?[car.lane,car.fromLane]:[car.lane];
+    for(const lane of occupied){if(!lanes.has(lane))lanes.set(lane,[]);lanes.get(lane).push({car,order,back:car.x-car.length});}
+  }
+  for(const entries of lanes.values()){
+    entries.sort((a,b)=>a.car.x-b.car.x||a.order-b.order);
+    let first=null,second=null;
+    const before=(a,b)=>!b||a.back<b.back||a.back===b.back&&a.order<b.order;
+    for(let i=entries.length-1;i>=0;i--){
+      const candidate=entries[i];
+      if(before(candidate,first)){second=first;first=candidate;}else if(before(candidate,second))second=candidate;
+      candidate.first=first;candidate.second=second;
+    }
+  }
+  return lanes;
+}
+function indexedLeader(index,car,lane){
+  const entries=index.get(lane);if(!entries)return null;
+  let low=0,high=entries.length;
+  while(low<high){const mid=(low+high)>>>1;if(entries[mid].car.x<car.x)low=mid+1;else high=mid;}
+  if(low===entries.length)return null;
+  const {first,second}=entries[low];
+  return first.car.id===car.id?second:first;
+}
+
 export class Simulation {
   constructor(random = Math.random) {
     this.random = random;
@@ -65,7 +97,11 @@ export class Simulation {
   }
   obstacle(car, lane, traffic = this.cars) {
     let pos = LENGTH + 1000, speed = car.desired;
-    for (const c of traffic) {
+    const index=this._stepTrafficIndexes?.get(traffic);
+    if(index){
+      const leader=indexedLeader(index,car,lane);
+      if(leader&&leader.back<pos){pos=leader.back;speed=leader.car.v;}
+    }else for (const c of traffic) {
       const occupying = c.lane === lane || (Math.abs(c.visualLane - c.lane) > .2 && c.fromLane === lane);
       if (c.id !== car.id && occupying && c.x >= car.x && c.x - c.length < pos) {
         pos = c.x - c.length; speed = c.v;
@@ -124,6 +160,7 @@ export class Simulation {
     return this.incidentBodies().some(i=>i.lane===lane&&i.x>=x-25&&i.x-x<distance);
   }
   incidentBodies(){
+    if(this._stepIncidentBodies)return this._stepIncidentBodies;
     return this.incidents.flatMap(i=>i.bodies?i.bodies.map((b,n)=>({...i,...b,bodyIndex:n,static:true,visualLane:b.lane,fromLane:b.lane})):[{...i,bodyIndex:0,static:true,visualLane:i.lane,fromLane:i.lane}]);
   }
   mergeTarget(mode,lane){
@@ -168,13 +205,18 @@ export class Simulation {
           if(c.x>bound+1e-8){c.x=bound;c.v=0;c.a=Math.min(0,c.a);changed=true;}
         }
       }
-      const leaders=[];
+      const leaders=[],nearestBumper=new Map();
       for(const c of [...this.cars].sort((a,b)=>b.x-a.x||a.id-b.id)){
         const lanes=this.occupiedLanes(c);
-        for(const leader of leaders)if(this.occupiedLanes(leader).some(l=>lanes.includes(l))){
-          const safe=leader.x-leader.length-2;
-          if(c.x>safe+1e-8){c.x=safe;c.v=Math.min(c.v,leader.v??0);c.a=Math.min(0,c.a);changed=true;}
+        // Most vehicles already have a safe gap. Skip the all-pairs fallback
+        // unless a processed leader's bumper actually constrains this vehicle.
+        if(lanes.some(l=>c.x>(nearestBumper.get(l)??Infinity)+1e-8)){
+          for(const leader of leaders)if(this.occupiedLanes(leader).some(l=>lanes.includes(l))){
+            const safe=leader.x-leader.length-2;
+            if(c.x>safe+1e-8){c.x=safe;c.v=Math.min(c.v,leader.v??0);c.a=Math.min(0,c.a);changed=true;}
+          }
         }
+        for(const lane of lanes)nearestBumper.set(lane,Math.min(nearestBumper.get(lane)??Infinity,c.x-c.length-2));
         leaders.push(c);
       }
       if(!changed)break;
@@ -259,10 +301,14 @@ export class Simulation {
         this.spawn(lane, 0, front ? Math.min(22, front.v) : 23); this.waiting--;
       }
     }
+    this._stepIncidentBodies=this.incidentBodies();
+    this._stepTrafficIndexes=new Map();
     const rain = this.scenario === 'rain';
     // Freeze all leader positions/speeds for this step. Updating leaders first
     // makes followers react instantly and produces artificial synchronised motion.
-    const snapshot = this.cars.map(c => ({ ...c }));
+    const snapshot=trafficSnapshot(this.cars);
+    this._stepTrafficIndexes.set(snapshot,trafficIndex(snapshot));
+    const sirens=snapshot.filter(c=>c.emergency);
     for (const c of this.cars) {
       if(c.recovering!=null||c.lane<0||c.onRamp!=null||c.blocker)continue;
       c.cooldown -= dt; c.decision -= dt;
@@ -270,7 +316,7 @@ export class Simulation {
       let front = this.obstacle(c, c.lane, snapshot);
       const upcoming = GANTRIES.findIndex((x, g) => x > c.x && x - c.x < 650 && this.signals[g][c.lane].mode !== 'open');
       const warning = sig.mode!=='open'?sig:upcoming>=0?this.signals[upcoming][c.lane]:sig;
-      const approachingSiren=!c.emergency&&snapshot.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<600);
+      const approachingSiren=!c.emergency&&sirens.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<600);
       const forced = sig.mode !== 'open' || upcoming >= 0 || this.laneHazardAhead(c.x,c.lane);
       // Plan a route to an actually open lane, one adjacent lane at a time.
       // Two adjacent red Xs must not strand a driver in the inner closed lane.
@@ -292,8 +338,8 @@ export class Simulation {
           if(lane<0||lane>2||(!escape&&this.laneHazardAhead(c.x,lane))||(c.truck&&lane===2&&!forced)||(this.signalAt(c.x,lane).mode!=='open'&&!escape))return false;
           if(!escape&&GANTRIES.some((x,g)=>x>c.x&&x-c.x<650&&this.signals[g][lane].mode!=='open'))return false;
           const ahead = this.obstacle(c, lane, this.cars);
-          const behind = this.cars.filter(o => o.id !== c.id && (o.lane === lane || (Math.abs(o.visualLane-o.lane)>.2&&o.fromLane===lane)) && o.x < c.x)
-            .sort((a, b) => b.x - a.x)[0];
+          let behind=null;
+          for(const o of this.cars)if(o.id!==c.id&&(o.lane===lane||Math.abs(o.visualLane-o.lane)>.2&&o.fromLane===lane)&&o.x<c.x&&(!behind||o.x>behind.x))behind=o;
           const rearGap = behind ? c.x - c.length - behind.x : 1000;
           const rearNeeded = forced&&c.v<2&&(behind?.v??0)<2?1.99:behind ? 5 + behind.v * (forced ? .85 : 1.5) + Math.max(0, behind.v - c.v) * (forced ? 1.5 : 3) : 0;
           const horizon=forced||c.emergency?2:4;
@@ -335,7 +381,8 @@ export class Simulation {
       if(merger.mergeRequest==null)continue;
       const ahead=this.obstacle(merger,merger.mergeRequest);
       if(ahead.gap<(merger.v<2?2:6+merger.v*.85))continue;
-      const receiver=this.cars.filter(c=>c.id!==merger.id&&!c.emergency&&c.lane===merger.mergeRequest&&c.x<merger.x-merger.length-2&&merger.x-c.x<120).sort((a,b)=>b.x-a.x)[0];
+      let receiver=null;
+      for(const c of this.cars)if(c.id!==merger.id&&!c.emergency&&c.lane===merger.mergeRequest&&c.x<merger.x-merger.length-2&&merger.x-c.x<120&&(!receiver||c.x>receiver.x))receiver=c;
       if(!receiver)continue;
       // A vehicle alongside the merger will pass first; don't slow somebody
       // behind that vehicle to reserve a gap the merger cannot yet reach.
@@ -345,7 +392,8 @@ export class Simulation {
       const needed=5+receiver.v*.9+Math.max(0,receiver.v-merger.v)*2;
       if(gap<needed+8)yieldRequests.set(receiver.id,merger.id);
     }
-    const movementSnapshot=this.cars.map(c=>({...c}));
+    const movementSnapshot=trafficSnapshot(this.cars);
+    this._stepTrafficIndexes.set(movementSnapshot,trafficIndex(movementSnapshot));
     for(const c of this.cars){
       if(c.onRamp!=null){const join=this.systems.ramps[c.onRamp].x;c.rampProgress=Math.max(0,Math.min(1,(c.x-(join-120))/120));if(c.x>=join){c.onRamp=null;c.slipRamp=null;}}
       if(c.recovering!=null){c.v=0;continue;}
@@ -394,6 +442,7 @@ export class Simulation {
     });
     this.exits = this.exits.filter(t => t > this.elapsed - 60);
     this.hardBrakeEvents=this.hardBrakeEvents.filter(t=>t>this.elapsed-60);
+    this._stepIncidentBodies=null;this._stepTrafficIndexes=null;
     if(this.systemsEnabled)this.systems.afterStep();
   }
 }

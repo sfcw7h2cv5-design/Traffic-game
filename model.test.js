@@ -371,3 +371,27 @@ test('an incident in the original lane stops influencing a vehicle once its body
  const c=s.spawn(1,2170,10);c.truck=false;c.length=4.7;c.fromLane=0;c.visualLane=.85;c.cooldown=1000;c.a=0;
  const before=c.v;s.step(.1);assert(c.v>=before);assert(!s.occupiedLanes(c).includes(0));
 });
+
+test('indexed frozen traffic queries match live scans through dense closure manoeuvres',()=>{
+ let indexedQueries=0;
+ class AuditedSimulation extends Simulation {
+  obstacle(car,lane,traffic=this.cars){
+   const result=super.obstacle(car,lane,traffic),indexes=this._stepTrafficIndexes;
+   if(indexes?.has(traffic)){
+    this._stepTrafficIndexes=null;
+    try{assert.deepEqual(result,super.obstacle(car,lane,traffic));indexedQueries++;}
+    finally{this._stepTrafficIndexes=indexes;}
+   }
+   return result;
+  }
+ }
+ const s=new AuditedSimulation(seeded(73));quiet(s);s.cars=[];
+ for(let i=0;i<300;i++){const lane=i%3,x=100+Math.floor(i/3)*80;s.spawn(lane,x,x>5000?3:20);}
+ s.signals[3][0].mode='closed';
+ s.incidents=[{id:999,lane:0,x:4400,length:4.7,type:'debris',clearsAt:Infinity}];
+ run(s,12);assert(indexedQueries>30000);
+ // Public queries must read edits made between steps, never a stale step cache.
+ const car=s.cars[0];s.cars=[car];s.incidents=[{id:1000,lane:car.lane,x:car.x+100,length:5,type:'debris',clearsAt:Infinity}];
+ assert.equal(s.obstacle(car,car.lane).gap,95);
+ s.incidents=[];assert(s.obstacle(car,car.lane).gap>95);
+});
