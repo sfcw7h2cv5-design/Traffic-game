@@ -4,7 +4,7 @@ A mobile browser motorway control simulation. No install or build dependencies.
 
 Run `npm start` from this directory, then open port 3000 in your development environment. Run `npm test` for the traffic model checks. Run `npm run build:preview` after changes to regenerate the self-contained `play.html` preview.
 
-Select a gantry to adjust individual lane speed limits, merge arrows and closures. Traffic travels north through a 6 km section with five gantries; signals apply downstream until the next gantry. Use upstream warnings before closures. Scenarios change arrival demand, wet-weather headways or driver compliance. Incidents arrive automatically and can be cleared; there is no fail state.
+Tap a gantry directly on the motorway to open its signal pop-up and adjust lane speed limits, merge arrows and closures. Previous/Next switches gantries inside the pop-up; Done, the close button, Escape, or a tap outside returns to the road. Traffic continues while controls are open. Traffic travels north through a 6 km section with five gantries; signals apply downstream until the next gantry. Use upstream warnings before closures. Scenarios change arrival demand, wet-weather headways or driver compliance. Incidents arrive automatically and can be cleared; there is no fail state.
 
 The model uses individual vehicles with desired speeds, acceleration and braking, speed-dependent following gaps, safe-gap lane changes, HGVs and varying speed compliance. Flow measures exits in a rolling simulated minute (initial readings warm up). Simulation runs at three simulated seconds per real second at 1×. Queued entry demand is retained. This is an illustrative simulation, not a validated traffic engineering tool.
 
