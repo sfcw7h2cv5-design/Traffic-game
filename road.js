@@ -15,17 +15,25 @@ export function createRoadGeometry(width,height,length,viewLength=length,viewSta
  return {width,height,roadWidth,laneWidth,leftAt,center,centerAtY,project,unproject,scale,scaleAt,laneX,angleAt};
 }
 
-// Long, shallow slip-road tapers share the motorway world projection.
-// The outside approach remains parallel to the motorway, with no right-angle
-// feeder. Geometry never depends on traffic or a queue length.
-export function slipRoadPoint(geometry,ramp,worldX){
- const length=ramp.approachLength??1100,d=Math.max(0,ramp.x-worldX),t=Math.min(1,d/length);
- const outside=geometry.laneWidth*1.8+8,smooth=t*t*(3-2*t);
- const slope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2+outside*6*t*(1-t)/length;
- return {x:geometry.laneX(worldX,0)-outside*smooth,y:geometry.project(worldX),angle:Math.atan2(slope,geometry.scale)};
+// A curved feeder leads into a parallel acceleration lane, then a joining
+// taper. Vehicles and pavement always use the same fixed world projection.
+export function slipRoadPoint(geometry,ramp,worldX,vehicle){
+ const approach=ramp.approachLength??1100,acceleration=ramp.mergeLength??600,taper=ramp.joinTaper??200;
+ const d=Math.max(0,ramp.x-worldX),parallel=geometry.laneWidth*.725;
+ const smooth=t=>t*t*(3-2*t),slope=t=>6*t*(1-t);
+ let offset,rate;
+ if(vehicle?.rampMerging&&vehicle.rampMergeStart!=null){
+  const distance=Math.max(1,ramp.x-vehicle.rampMergeStart),t=Math.max(0,Math.min(1,(worldX-vehicle.rampMergeStart)/distance));
+  offset=parallel*(1-smooth(t));rate=parallel*slope(t)/distance;
+ }
+ else if(d<taper){const t=d/taper;offset=parallel*smooth(t);rate=parallel*slope(t)/taper;}
+ else if(d<=acceleration){offset=parallel;rate=0;}
+ else{const t=Math.min(1,(d-acceleration)/(approach-acceleration)),extra=geometry.laneWidth*1.175+8;offset=parallel+extra*smooth(t);rate=extra*slope(t)/(approach-acceleration);}
+ const roadSlope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2;
+ return {x:geometry.laneX(worldX,0)-offset,y:geometry.project(worldX),angle:Math.atan2(roadSlope+rate,geometry.scale)};
 }
 export function rampEdges(geometry,p){
- const half=geometry.laneWidth*.4/2,dx=half*Math.cos(p.angle),dy=half*Math.sin(p.angle);
+ const half=geometry.laneWidth*.45/2,dx=half*Math.cos(p.angle),dy=half*Math.sin(p.angle);
  const outer={x:p.x-dx,y:p.y-dy},inner={x:p.x+dx,y:p.y+dy};
  return {outer,inner,connected:inner.x>=geometry.leftAt(geometry.unproject(inner.y))};
 }
@@ -51,12 +59,15 @@ export function roadworkCones(geometry,work){
  return result;
 }
 
-// The exit diverges gradually before the joining taper, then fades into the
-// local road network. It never turns into a horizontal cross-road.
+// First move into a parallel deceleration lane, then leave along the ramp.
 export function offRampPoint(geometry,ramp,worldX){
- const start=ramp.offStart??ramp.x-1150,length=ramp.offLength??450;
- const t=Math.max(0,Math.min(1,(worldX-start)/length)),outside=geometry.laneWidth*.7+4;
- const smooth=t*t*(3-2*t);
- const slope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2-outside*6*t*(1-t)/length;
- return {x:geometry.laneX(worldX,0)-outside*smooth,y:geometry.project(worldX),angle:Math.atan2(slope,geometry.scale)};
+ const start=ramp.offStart??ramp.x-1750,length=ramp.offLength??850,depart=ramp.offDeparture??300;
+ const travelled=Math.max(0,worldX-start),parallel=geometry.laneWidth*.725,split=length*.6;
+ const smooth=t=>t*t*(3-2*t),slope=t=>6*t*(1-t);
+ let offset,rate;
+ if(travelled<depart){const t=travelled/depart;offset=parallel*smooth(t);rate=parallel*slope(t)/depart;}
+ else if(travelled<split){offset=parallel;rate=0;}
+ else{const t=Math.min(1,(travelled-split)/(length-split)),extra=geometry.laneWidth*.175+2;offset=parallel+extra*smooth(t);rate=extra*slope(t)/(length-split);}
+ const roadSlope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2;
+ return {x:geometry.laneX(worldX,0)-offset,y:geometry.project(worldX),angle:Math.atan2(roadSlope-rate,geometry.scale)};
 }

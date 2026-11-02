@@ -57,15 +57,15 @@ test('visible lane positions follow the model through crowded closure merges',as
 
 function overviewFrame(cars,incidents=[],width=320,ramps=[]){
  const g=createRoadGeometry(width,940,10000);
- return {g,opts:{laneWidth:g.laneWidth,left:g.leftAt(0),project:g.project,laneX:g.laneX,angleAt:g.angleAt,overview:true,rampPosition:c=>slipRoadPoint(g,ramps[c.onRamp??c.slipRamp],c.x)}};
+ return {g,opts:{laneWidth:g.laneWidth,left:g.leftAt(0),project:g.project,laneX:g.laneX,angleAt:g.angleAt,overview:true,rampPosition:c=>slipRoadPoint(g,ramps[c.onRamp??c.slipRamp],c.x,c)}};
 }
 function centred(sprites,g,ramps=[]){
  for(const c of sprites){
   const ramp=c.onRamp??c.slipRamp;
   const shoulderRejoin=c.lane>=0&&c.fromLane<0&&c.visualLane<0;
-  const expected=ramp!=null?slipRoadPoint(g,ramps[ramp],c.x).x:shoulderRejoin?g.laneX(c.x,-1)+(g.laneX(c.x,0)-g.laneX(c.x,-1))*(c.visualLane+1):g.laneX(c.x,c.lane<0?-1:c.visualLane);
+  const expected=ramp!=null?slipRoadPoint(g,ramps[ramp],c.x,c).x:shoulderRejoin?g.laneX(c.x,-1)+(g.laneX(c.x,0)-g.laneX(c.x,-1))*(c.visualLane+1):g.laneX(c.x,c.lane<0?-1:c.visualLane);
   assert.equal(c.cx,expected,'icon moved beside its actual lane position');
-  assert.equal(c.cy,ramp!=null?slipRoadPoint(g,ramps[ramp],c.x).y:g.project(c.x));assert.equal(c.packedOffset,0);
+  assert.equal(c.cy,ramp!=null?slipRoadPoint(g,ramps[ramp],c.x,c).y:g.project(c.x));assert.equal(c.packedOffset,0);
  }
 }
 test('full-network overview draws every vehicle on its actual lane centre without resizing',()=>{

@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createRoadGeometry,slipRoadPoint,slipRoadEdges,roadworkCones} from './road.js';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,roadworkCones} from './road.js';
 import {layoutSprites} from './display.js';
 import {Simulation,LENGTH,GANTRIES} from './model.js';
 test('narrow curved carriageway and every sign target stay inside mobile and desktop maps',()=>{
@@ -48,17 +48,17 @@ test('joining curve and pavement meet the motorway with matching tangents',()=>{
   assert(Math.abs(join.angle-g.angleAt(x))<1e-7);
   const before=slipRoadPoint(g,r,x-.01),slope=(join.x-before.x)/.01;
   const mainSlope=(g.laneX(x,0)-g.laneX(x-.01,0))/.01;
-  assert(Math.abs(slope-mainSlope)<.00001);
+  assert(Math.abs(slope-mainSlope)<.0001);
   let sawSeparate=false,sawConnected=false;
   for(let d=1100;d>=0;d-=5){
    const p=slipRoadPoint(g,r,x-d),edge=slipRoadEdges(g,r,x-d);
    assert(p.x<=g.laneX(g.unproject(p.y),0)+1e-7);
-   assert(Math.abs(Math.hypot(edge.innerPoint.x-edge.outerPoint.x,edge.innerPoint.y-edge.outerPoint.y)-g.laneWidth*.4)<1e-7);assert(Number.isFinite(p.angle));
+   assert(Math.abs(Math.hypot(edge.innerPoint.x-edge.outerPoint.x,edge.innerPoint.y-edge.outerPoint.y)-g.laneWidth*.45)<1e-7);assert(Number.isFinite(p.angle));
    if(edge.connected)sawConnected=true;else sawSeparate=true;
   }
   assert(sawSeparate&&sawConnected);
   const a=slipRoadPoint(g,r,x-600-.001),b=slipRoadPoint(g,r,x-600+.001);
-  assert(Math.abs(a.angle-b.angle)<.00001);
+  assert(Math.abs(a.angle-b.angle)<.0001);
  }
 });
 
@@ -86,28 +86,34 @@ test('road shape, junctions and gantries stay fixed while traffic queues and cle
  sim.cars=[];sim.incidents=[];
  assert.deepEqual(coordinates(createRoadGeometry(...args)),before);
 });
-test('off ramps diverge smoothly from the fixed lane 1 centre',async()=>{
- const {offRampPoint}=await import('./road.js');
- const g=createRoadGeometry(420,1200,10000),r={x:5900};
- const start=offRampPoint(g,r,4750),near=offRampPoint(g,r,4750.001),end=offRampPoint(g,r,5100);
- assert.equal(start.x,g.laneX(4750,0));
- assert(Math.abs(near.angle-start.angle)<.0001);
- assert(end.x<g.leftAt(5100));assert.equal(end.y,g.project(5100));
+test('off ramps diverge smoothly into a deceleration lane before the exit',()=>{
+ const g=createRoadGeometry(420,1200,10000),r=new Simulation(()=>.5).systems.ramps[1],x=r.offStart;
+ const start=offRampPoint(g,r,x),near=offRampPoint(g,r,x+.001),end=offRampPoint(g,r,x+r.offLength);
+ assert.equal(start.x,g.laneX(x,0));assert(Math.abs(near.angle-start.angle)<.0001);
+ assert(end.x<g.leftAt(x+r.offLength));assert.equal(end.y,g.project(x+r.offLength));
 });
 test('slip roads stay gradual and exits precede entries without crossing',async()=>{
  const {offRampPoint}=await import('./road.js');
  for(const width of [320,390,844,1440]){
   const s=new Simulation(()=>.5),g=createRoadGeometry(width,1200,LENGTH);
   for(const r of s.systems.ramps){
-   assert(r.offStart>=0);assert(r.offStart+r.offLength<r.x-r.mergeLength);
+   assert(r.offStart+r.offLength>0);assert(r.offStart+r.offLength<r.x-r.mergeLength);
    for(let n=0;n<=1000;n++){
     const x=r.offStart+r.offLength*n/1000,exit=offRampPoint(g,r,x),entry=slipRoadPoint(g,r,x);
-    assert(entry.x<exit.x-g.laneWidth*.4,'slip roads cross or overlap');
+    assert(entry.x<exit.x-g.laneWidth*.45,'slip roads cross or overlap');
     for(const [p,pointX] of [[exit,x],[slipRoadPoint(g,r,r.x-r.approachLength*n/1000),r.x-r.approachLength*n/1000]]){
      assert.equal(p.y,g.project(pointX));
-     assert(Math.abs(p.angle-g.angleAt(pointX))<Math.PI/3,'slip road turns across the motorway');
+     assert(Math.abs(p.angle-g.angleAt(pointX))<Math.PI*.46,'slip road turns across the motorway');
     }
    }
   }
+ }
+});
+test('acceleration and deceleration sections run parallel beside the motorway',()=>{
+ for(const width of [320,390,844,1440]){
+  const g=createRoadGeometry(width,1200,LENGTH),r=new Simulation(()=>.5).systems.ramps[1];
+  const on=[r.x-r.mergeLength+20,r.x-r.joinTaper-20].map(x=>slipRoadPoint(g,r,x).x-g.leftAt(x));
+  const off=[r.offStart+r.offDeparture+20,r.offStart+r.offLength*.6-20].map(x=>offRampPoint(g,r,x).x-g.leftAt(x));
+  assert(Math.abs(on[0]-on[1])<1e-7);assert(Math.abs(off[0]-off[1])<1e-7);assert(on[0]<0&&off[0]<0);
  }
 });

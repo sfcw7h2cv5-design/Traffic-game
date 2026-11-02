@@ -357,13 +357,12 @@ test('traffic already alongside a waiting merger does not brake to let it in',()
  const behind=s.spawn(1,2100,28);behind.truck=false;behind.cooldown=1000;
  s.step(.1);assert.equal(passing.yieldingFor,null);assert.equal(behind.yieldingFor,null);assert(passing.v>27.9);
 });
-test('only the nearest rear driver is asked to make a merging gap',()=>{
- const s=new Simulation(seeded());quiet(s);s.cars=[];
- s.signals[1][0].mode='closed';
- const waiting=s.spawn(0,2200,0);waiting.length=4.7;waiting.cooldown=0;waiting.decision=0;
- const nearest=s.spawn(1,2165,24);nearest.cooldown=1000;
- const second=s.spawn(1,2100,24);second.cooldown=1000;
- s.step(.1);assert.equal(nearest.yieldingFor,waiting.id);assert.equal(second.yieldingFor,null);
+test('only the nearest rear driver with enough distance to ease safely is asked to make a gap',()=>{
+ const s=new Simulation(seeded());quiet(s);s.cars=[];s.signals[1][0].mode='closed';
+ const waiting=s.spawn(0,2200,0);Object.assign(waiting,{length:4.7,cooldown:0,decision:0});
+ const passing=s.spawn(1,2165,24),nearest=s.spawn(1,1950,24),second=s.spawn(1,1870,24);
+ for(const c of [passing,nearest,second])Object.assign(c,{truck:false,length:4.7,v:24,cooldown:Infinity,decision:Infinity});
+ s.step(.1);assert.equal(passing.yieldingFor,null);assert.equal(nearest.yieldingFor,waiting.id);assert.equal(second.yieldingFor,null);
 });
 test('an incident in the original lane stops influencing a vehicle once its body has cleared that lane',()=>{
  const s=new Simulation(seeded());quiet(s);s.cars=[];
@@ -490,4 +489,32 @@ test('open 30 to 50 to 70 mph gantries do not stop or meter a moving platoon',()
   for(const c of s.cars){assert(c.v>5,'an open gantry stopped a moving vehicle');assert(c.x>=before.get(c.id));assert(s.obstacle(c,c.lane).gap>=1.99);}
  }
  assert(cars.every(c=>c.x>GANTRIES[5]),'platoon failed to pass the higher-limit section');
+});
+test('an incident in an adjacent lane has no speed effect without a real merge request',()=>{
+ const plain=new Simulation(seeded(90)),incident=new Simulation(seeded(90));
+ for(const s of [plain,incident]){quiet(s);s.cars=[];const c=s.spawn(1,2000,25);Object.assign(c,{truck:false,desired:25,courtesy:1,decision:Infinity,cooldown:Infinity});}
+ incident.incidents=[{id:0,lane:0,x:2200,length:5,type:'debris',clearsAt:Infinity}];
+ for(let n=0;n<300;n++){
+  plain.step(.1);incident.step(.1);
+  assert.deepEqual(incident.cars.map(c=>[c.x,c.v,c.a]),plain.cars.map(c=>[c.x,c.v,c.a]),'adjacent incident imposed phantom braking');
+ }
+});
+test('a closure coordinates one courtesy receiver at a time rather than slowing the whole adjacent lane',()=>{
+ const s=new Simulation(seeded(30));quiet(s);s.cars=[];s.signals[1][0].mode='closed';
+ for(const x of [2200,2160,2120,2080]){const c=s.spawn(0,x,0);Object.assign(c,{truck:false,length:4.7,decision:Infinity,cooldown:Infinity});}
+ const passing=[];for(const x of [2170,2130,2090,2050]){const c=s.spawn(1,x,12);Object.assign(c,{truck:false,length:4.7,desired:20,v:12,decision:Infinity,cooldown:Infinity});passing.push(c);}
+ s.step(.1);assert.equal(passing.filter(c=>c.yieldingFor!=null).length,1,'the whole neighbouring lane was asked to yield');
+});
+test('a stopped driver at a red X merges into a creeping available lane',()=>{
+ const s=new Simulation(seeded(14));quiet(s);s.cars=[];s.signals[2][0].mode='closed';
+ const waiting=s.spawn(0,2635,0),rear=s.spawn(1,2620,3),front=s.spawn(1,2800,12);
+ for(const c of [waiting,rear,front])Object.assign(c,{truck:false,length:4.7,desired:20,courtesy:1,headway:1.8});
+ waiting.cooldown=waiting.decision=0;rear.cooldown=rear.decision=front.cooldown=front.decision=Infinity;rear.v=3;
+ let mergedAt=null;
+ for(let n=0;n<150;n++){
+  const before=new Map(s.cars.map(c=>[c.id,c.x]));s.step(.1);
+  for(const c of s.cars){assert(c.x>=before.get(c.id)-1e-7);for(const lane of s.occupiedLanes(c))assert(s.obstacle(c,lane).gap>=1.99);}
+  if(waiting.lane===1&&mergedAt==null)mergedAt=(n+1)/10;
+ }
+ assert(mergedAt!=null&&mergedAt<10,'red-X driver waited instead of using a cooperative safe gap');assert(waiting.x>2650);
 });

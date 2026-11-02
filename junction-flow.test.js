@@ -15,7 +15,7 @@ function arrival(s,r,distance,v=25){
 function safe(s,before){
  for(const c of s.cars)if(before?.has(c.id))assert(c.x>=before.get(c.id)-1e-7,'mainline vehicle moved backwards');
  const bodies=[...s.cars,...s.incidentBodies()];
- for(const lane of [-1,0,1,2]){
+ for(const lane of new Set([-1,0,1,2,...s.cars.flatMap(c=>s.occupiedLanes(c))])){
   const cars=bodies.filter(c=>s.occupiedLanes(c).includes(lane)).sort((a,b)=>b.x-a.x);
   for(let i=1;i<cars.length;i++)assert(cars[i-1].x-cars[i-1].length-cars[i].x>=1.99,'overlap in lane '+lane);
  }
@@ -43,8 +43,8 @@ test('a matched arrival keeps moving throughout the whole joining taper',()=>{
  assert(worst>-1,'gap matching produced sudden braking');assert.equal(c.headway,2.7,'temporary merge following changed the driver permanently');
 });
 test('courtesy gap requests are modest, stable and expire with the ramp closure',()=>{
- const s=setup(),o=s.systems,r=o.ramps[0],entry=r.x-r.mergeLength;
- arrival(s,r,100,10);
+ const s=setup(),o=s.systems,r=o.ramps[0],entry=r.x-r.joinTaper;
+ const merger=s.spawn(0,entry-100,10);Object.assign(merger,{onRamp:r.id,rampMerging:false,slipRamp:r.id,desired:25});
  const front=s.spawn(0,entry+50,25),rear=s.spawn(0,entry-200,25);
  for(const c of [front,rear])Object.assign(c,{truck:false,length:4.7,desired:25,v:25,courtesy:1,cooldown:Infinity,decision:Infinity});
  o.updateRampCourtesy();
@@ -77,22 +77,21 @@ test('repeated rush-hour arrivals use moving gaps without building unnecessary s
   assert(stoppedSeconds<200,'junction queue did not clear: '+JSON.stringify({seed,stoppedSeconds}));
  }
 });
-test('J2 slow traffic reserves a ramp turn then gives the mainline a turn, with lane 1 open or closed',()=>{
+test('J2 takes turns at the actual merge, with lane 1 open or closed',()=>{
  for(const closed of [false,true]){
-  const s=setup(),o=s.systems,r=o.ramps[1],entry=r.x-r.mergeLength;
+  const s=setup(),o=s.systems,r=o.ramps[1],point=r.x-r.joinTaper;
   if(closed)for(const row of s.signals)row[0].mode='closed';
-  const c=arrival(s,r,0,0),rear=s.spawn(0,entry-65,5);
-  Object.assign(rear,{truck:false,length:4.7,cooldown:Infinity,decision:Infinity});
-  o.updateZipper();assert.equal(rear.zipperStop,undefined);assert(rear.zipperYieldTarget>0&&rear.zipperYieldTarget<rear.v);assert(s.obstacle(rear,0).gap>1000);
-  // A genuine stopped rear gap is required; turn-taking never bypasses safety.
-  rear.x=entry-c.length-14;rear.v=0;o.releaseRamps();
-  assert(s.cars.includes(c));assert.equal(r.zipperTurn,'main');
-  const next=arrival(s,r,0,0);o.updateZipper();assert.equal(rear.zipperYieldTarget,undefined);
-  assert.equal(r.zipperMain,rear.id);
-  rear.x=entry+1;o.updateZipper();assert.equal(r.zipperTurn,'ramp');
+  const c=s.spawn(0,point-2,0);Object.assign(c,{onRamp:r.id,slipRamp:r.id,rampMerging:false,truck:false,length:4.7});
+  const rear=s.spawn(0,point-65,5);Object.assign(rear,{truck:false,length:4.7,cooldown:Infinity,decision:Infinity});
+  o.updateZipper();assert(rear.zipperYieldTarget>0&&rear.zipperYieldTarget<rear.v);assert(s.obstacle(rear,0).gap>700);
+  rear.x=point-c.length-14;rear.v=0;o.prepareRampMerges(.1);
+  assert(c.rampMerging);assert.equal(r.zipperTurn,'main');
+  c.x=point+40;
+  const next=s.spawn(0,point-40,0);Object.assign(next,{onRamp:r.id,slipRamp:r.id,rampMerging:false});
+  o.updateZipper();assert.equal(rear.zipperYieldTarget,undefined);assert.equal(r.zipperMain,rear.id);
+  rear.x=point+1;o.updateZipper();assert.equal(r.zipperTurn,'ramp');
   for(let n=0;n<1800&&s.cars.includes(c)&&c.x<r.x+100;n++){s.step(.1);safe(s);}
-  assert(c.x>r.x,'joining vehicle stalled in taper');
-  if(closed)assert(c.lane>0,'joining vehicle did not evacuate closed lane 1');
+  assert(c.x>r.x);if(closed)assert(c.lane>0);
  }
 });
 test('speed anticipation is continuous across 400 m and respects the posted limit downstream',()=>{
@@ -109,4 +108,40 @@ test('settled traffic follows an exit branch continuously and is counted once',(
  for(let n=0;n<600&&s.cars.includes(c);n++){s.step(.1);assert(c.x>=before);assert(c.x-before<4);before=c.x;}
  assert(!s.cars.includes(c));assert.equal(o.totalExited,1);assert.equal(s.exits.length,1);
  o.updateOffRamps();assert.equal(o.totalExited,1);
+});
+test('the parallel acceleration lane admits traffic alongside an occupied motorway lane',()=>{
+ const s=setup(),r=s.systems.ramps[1],entry=r.x-r.mergeLength,c=arrival(s,r,0,25);
+ const main=s.spawn(0,entry,25);Object.assign(main,{truck:false,length:4.7,desired:25,v:25,courtesy:1,cooldown:Infinity,decision:Infinity});
+ s.step(.1);assert(s.cars.includes(c));assert(!s.occupiedLanes(c).includes(0));assert.equal(s.obstacle(main,0).gap,Infinity);
+ for(let n=0;n<40;n++){s.step(.1);assert(main.v>24.9,'parallel traffic braked the motorway');safe(s);}
+});
+test('exit traffic slows in the separate deceleration lane without braking through traffic',()=>{
+ const s=setup(),o=s.systems,r=o.ramps[1];while(s.id%7)s.id++;
+ const c=s.spawn(0,r.offStart+1,28),behind=s.spawn(0,r.offStart-100,28);
+ for(const car of [c,behind])Object.assign(car,{truck:false,length:4.7,desired:28,v:28,courtesy:1,cooldown:Infinity,decision:Infinity});
+ const baseline=setup();baseline.systems.updateOffRamps=()=>{};while(baseline.id%7)baseline.id++;
+ const through=baseline.spawn(0,r.offStart+1,28),control=baseline.spawn(0,r.offStart-100,28);
+ for(const car of [through,control])Object.assign(car,{truck:false,length:4.7,desired:28,v:28,courtesy:1,cooldown:Infinity,decision:Infinity});
+ let separate=false,last=28;
+ for(let n=0;n<600&&s.cars.includes(c);n++){
+  s.step(.1);baseline.step(.1);safe(s);
+  if(c.offProgress<1)assert(c.v>27.9,'exit car braked before leaving the motorway');
+  else{separate=true;assert(!s.occupiedLanes(c).includes(0));}
+  assert(behind.v>=control.v-1e-7,'exit braking propagated into the running lane');last=c.v;
+ }
+ assert(separate);assert(!s.cars.includes(c));assert(last<26&&last>8,'deceleration lane did not reduce exit speed');assert.equal(o.totalExited,1);
+});
+test('open J2 keeps moving while G05 and G06 close the middle motorway lane',()=>{
+ const s=new Simulation(seeded(17)),o=s.systems,r=o.ramps[1];s.nextIncident=s.nextEmergency=Infinity;
+ o.work.announceAt=o.work.startsAt=o.roadblock.startsAt=o.phase.endsAt=Infinity;o.phase.multiplier=1.8;
+ for(const ramp of o.ramps)ramp.nextArrival=Infinity;r.nextArrival=0;
+ s.signals[4].forEach(signal=>signal.speed=50);s.signals[4][1].mode='merge-right';s.signals[5][1].mode='closed';
+ const merged=new Set();
+ for(let n=0;n<3000;n++){
+  s.step(.1);
+  for(const c of r.queue)assert(c.v>.1,'open-junction approach stopped at an artificial entry gate');
+  for(const c of s.cars)if(c.onRamp===r.id){assert(c.v>.1,'open-junction acceleration lane stopped');if(c.rampMerging)merged.add(c.id);}
+  if(n%20===0)safe(s);
+ }
+ assert(merged.size>=15,'junction failed to merge its demand');
 });

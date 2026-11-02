@@ -57,3 +57,17 @@ test('a courtesy request applies only before entry, only in lane 1, and only unt
  for(let n=0;n<10;n++)for(const value of [active,other,passed,expired])value.s.step(.1);
  assert(active.c.v<20);assert(other.c.v>20&&passed.c.v>20&&expired.c.v>20);
 });
+test('G02 arrow and G03 lane-1 closure share traffic across the two open lanes',()=>{
+ const s=new Simulation(seeded(71));s.systemsEnabled=false;s.nextIncident=s.nextEmergency=Infinity;
+ s.signals[1][0].mode='merge-right';s.signals[2][0].mode='closed';s.incidents=[{id:0,lane:0,x:3300,length:5,type:'debris',clearsAt:Infinity}];
+ let stopped=0,outside=0,crossed=0;
+ for(let n=0;n<6000;n++){
+  const before=new Map(s.cars.map(c=>[c.id,c.x]));s.step(.1);
+  if(n>1200)for(const c of s.cars){
+   if(c.x>2000&&c.x<3300){if(c.lane===1&&c.v<1)stopped++;if(c.lane===2)outside++;}
+   if(before.get(c.id)<3000&&c.x>=3000)crossed++;
+  }
+  if(n%100===0)separated(s);
+ }
+ assert(stopped<200,'closure produced sustained gridlock in the open middle lane');assert(outside>15000,'outside lane was not used');assert(crossed>130,'closure flow stalled');
+});

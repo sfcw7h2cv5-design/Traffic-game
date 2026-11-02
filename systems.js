@@ -2,7 +2,7 @@
 export class NetworkSystems {
  constructor(sim,{length,gantries}){
   this.sim=sim;this.length=length;this.gantries=gantries;
-  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,offStart:x-1150,offLength:450,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0}));
+  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,offStart:x-1750,offLength:850,offDeparture:300,joinTaper:200,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0}));
   this.phases=[{name:'Normal demand',multiplier:1,duration:90},{name:'Morning rush',multiplier:1.8,duration:180},{name:'Demand easing',multiplier:.75,duration:100},{name:'Stadium traffic',multiplier:2.2,duration:160},{name:'Normal demand',multiplier:1,duration:150}];
   this.phaseIndex=0;this.phase={...this.phases[0],endsAt:90};
   this.work={x:4200,length:150,lanes:[0],announceAt:45,startsAt:150,status:'scheduled',remaining:180,sceneId:null};
@@ -20,8 +20,8 @@ export class NetworkSystems {
   const limit=s.signalAt(entry,0).speed*.44704;
   return Math.max(0,Math.min(car?.desired??limit,limit,weight?Math.max(2,weighted/weight):limit));
  }
- rampGap(ramp,{time=0,v=ramp.queue[0]?.v??0,traffic=this.rampTraffic()}={}){
-  const s=this.sim,x=ramp.x-ramp.mergeLength,car=ramp.queue[0];
+ rampGap(ramp,{time=0,v=ramp.queue[0]?.v??0,traffic=this.rampTraffic(),car=ramp.queue[0],point=ramp.x-ramp.mergeLength}={}){
+  const s=this.sim,x=point;
   // Motorway signs guide lane changes after the joining taper; they are not
   // slip-road stop signals. Keep entry available while an onward lane is open.
   const next=this.gantries.findIndex(g=>g>ramp.x);
@@ -50,7 +50,7 @@ export class NetworkSystems {
   return {time:transition+(distance-travel)/Math.max(.1,target),speed:target};
  }
  rampApproach(ramp,traffic){
-  const c=ramp.queue[0],distance=Math.max(0,c.rampDistance-ramp.mergeLength),cruise=this.rampCruise(ramp,traffic);
+  const entry=ramp.x-ramp.mergeLength,c=ramp.queue[0],distance=Math.max(0,c.rampDistance-ramp.mergeLength),cruise=this.rampCruise(ramp,traffic);
   const stopping=Math.sqrt(2*2*distance);
   if(ramp.mode!=='open')return Math.min(cruise,stopping);
   if(distance<.001)return this.rampGap(ramp,{traffic})?cruise:0;
@@ -61,7 +61,7 @@ export class NetworkSystems {
   for(const reduction of [0,1,2,3,5,7,10,14,18]){
    const target=Math.max(4,cruise-reduction),arrival=this.rampArrival(c,distance,target);
    if(arrival.time>45)continue;
-   const gap=this.rampGap(ramp,{time:arrival.time,v:arrival.speed,traffic});
+   const gap=this.rampGap(ramp,{car:c,point:entry,time:arrival.time,v:arrival.speed,traffic});
    if(gap)plans.push({carId:c.id,frontId:gap.frontId,rearId:gap.rearId,target,arrival:arrival.time});
   }
   const retained=old&&plans.find(p=>p.frontId===old.frontId&&p.rearId===old.rearId);
@@ -72,15 +72,15 @@ export class NetworkSystems {
  updateRampCourtesy(){
   const s=this.sim,requests=new Map(),traffic=this.rampTraffic();
   for(const ramp of this.ramps){
-   const c=ramp.queue[0];if(!c||ramp.mode!=='open')continue;
-   const entry=ramp.x-ramp.mergeLength,distance=c.rampDistance-ramp.mergeLength;
+   const c=s.cars.find(c=>c.onRamp===ramp.id&&!c.rampMerging);if(!c||ramp.mode!=='open')continue;
+   const entry=ramp.x-ramp.joinTaper,distance=entry-c.x;
    if(distance<25||distance>500)continue;
    const cruise=this.rampCruise(ramp,traffic),arrival=this.rampArrival(c,distance,cruise);
    if(arrival.time<3||arrival.time>20||cruise<8)continue;
-   if(ramp.gapPlan?.carId===c.id&&ramp.gapPlan.target>=Math.max(8,cruise*.6))continue;
+   if(c.accelGap?.target>=Math.max(8,cruise*.6))continue;
    // A usable moving gap needs no intervention. Otherwise only a rear driver
    // still well upstream may make a small, voluntary speed adjustment.
-   if(this.rampGap(ramp,{time:arrival.time,v:arrival.speed,traffic}))continue;
+   if(this.rampGap(ramp,{car:c,point:entry,time:arrival.time,v:arrival.speed,traffic}))continue;
    let rear=null,rearAt=-Infinity;
    for(const car of traffic){
     const future=car.x+car.v*arrival.time;
@@ -106,9 +106,9 @@ export class NetworkSystems {
   const s=this.sim,traffic=this.rampTraffic();
   for(const c of s.cars){delete c.zipperYieldTarget;delete c.zipperYieldEntry;}
   for(const r of this.ramps){
-   const c=r.queue[0],entry=r.x-r.mergeLength;
+   const c=s.cars.find(c=>c.onRamp===r.id&&!c.rampMerging),entry=r.x-r.joinTaper;
    if(r.zipperMain!=null){const main=s.cars.find(c=>c.id===r.zipperMain);if(!main||main.x>=entry){r.zipperTurn='ramp';r.zipperMain=null;}}
-   if(!c||r.mode!=='open'||c.rampDistance-r.mergeLength>80)continue;
+   if(!c||r.mode!=='open'||entry-c.x>80)continue;
    const rear=traffic.filter(c=>c.x<entry&&c.onRamp==null).sort((a,b)=>b.x-a.x)[0];
    if(!rear||rear.emergency||rear.v>12||c.v>12)continue;
    if(r.zipperTurn==='main'){r.zipperMain??=rear.id;continue;}
@@ -125,12 +125,35 @@ export class NetworkSystems {
  updateOffRamps(){
   const s=this.sim;
   for(const c of s.cars){
-   if(c.offRamp!=null)continue;
+   if(c.offRamp!=null){const r=this.ramps[c.offRamp];c.offProgress=Math.min(1,Math.max(0,(c.x-r.offStart)/r.offDeparture));continue;}
    if(c.lane!==0||c.onRamp!=null||c.emergency||c.kind||c.laneChange||c.id%7!==0)continue;
-   const r=this.ramps.find(r=>c.x>=r.offStart&&c.x<r.offStart+5);
-   if(r)c.offRamp=r.id;
+   const r=this.ramps.find(r=>c.x>=Math.max(0,r.offStart)&&c.x<Math.max(0,r.offStart)+5);
+   if(r){c.offRamp=r.id;c.offProgress=0;}
   }
   s.cars=s.cars.filter(c=>{if(c.offRamp==null||c.x<this.ramps[c.offRamp].offStart+this.ramps[c.offRamp].offLength)return true;s.exits.push(s.elapsed);this.recordExit(c);return false;});
+ }
+
+ // Drive along the acceleration lane, then reserve the running lane only
+ // when a real moving gap exists at the beginning of the joining taper.
+ prepareRampMerges(dt){
+  const s=this.sim,traffic=this.rampTraffic();
+  for(const c of s.cars){
+   if(c.onRamp==null||c.rampMerging)continue;
+   const r=this.ramps[c.onRamp],point=r.x-r.joinTaper,distance=Math.max(0,point-c.x);
+   const cruise=Math.min(c.desired,this.rampCruise(r)),plans=[];
+   for(const reduction of [0,1,2,3,5,7,10,14,18]){
+    const target=Math.max(2,cruise-reduction),arrival=this.rampArrival(c,distance,target);
+    if(arrival.time>45)continue;
+    const gap=this.rampGap(r,{car:c,point,time:arrival.time,v:arrival.speed,traffic});
+    if(gap)plans.push({...gap,target});
+   }
+   const retained=c.accelGap&&plans.find(p=>p.frontId===c.accelGap.frontId&&p.rearId===c.accelGap.rearId);
+   c.accelGap=retained&&retained.target>=(plans[0]?.target??0)-2?retained:plans[0];
+   c.accelTarget=c.accelGap?.target??Math.min(cruise,Math.sqrt(2*1.5*distance));
+   if(c.x>=r.x-r.mergeLength&&r.mode==='open'&&this.rampGap(r,{car:c,point:c.x,v:c.v,traffic})){
+    c.rampMerging=true;c.rampMergeStart=c.x;c.mergeHeadwayStart=c.x;c.mergeRequest=null;r.zipperTurn='main';r.zipperMain=null;traffic.push(c);
+   }
+  }
  }
 
  updateRamps(dt){
@@ -142,7 +165,7 @@ export class NetworkSystems {
     r.nextArrival=s.elapsed+(22+s.random()*10)/this.phase.multiplier;
    }
    if(!r.queue.length){r.releasing=false;continue;}
-   const traffic=this.rampTraffic(),approach=this.rampApproach(r,traffic);
+   const traffic=s.cars.filter(c=>c.onRamp===r.id),approach=r.mode==='open'?this.rampCruise(r):this.rampApproach(r,traffic);
    r.releasing=r.mode==='open'&&!!this.rampGap(r,{traffic});
    for(let i=0;i<r.queue.length;i++){
     const c=r.queue[i],leader=r.queue[i-1];
@@ -160,12 +183,12 @@ export class NetworkSystems {
   for(const r of this.ramps){
    const c=r.queue[0];
    if(!c||c.rampDistance>r.mergeLength+.001)continue;
-   const gap=r.mode==='open'?this.rampGap(r):null;
+   const gap=r.mode==='open'?this.rampGap(r,{traffic:s.cars.filter(c=>c.onRamp===r.id)}):null;
    if(!gap){c.v=0;r.releasing=false;continue;}
    // Mainline traffic has advanced first and keeps priority. Commit the car
    // once, retaining its matched speed instead of integrating it twice.
-   r.queue.shift();c.x=r.x-c.rampDistance;c.onRamp=r.id;c.rampProgress=0;c.cooldown=8;c.decision=2;s.cars.push(c);
-   r.zipperTurn='main';r.zipperMain=null;r.releasing=true;r.lastRelease=s.elapsed;r.joined++;r.gapPlan=null;
+   r.queue.shift();c.x=r.x-c.rampDistance;c.onRamp=r.id;c.rampMerging=false;c.rampProgress=0;c.cooldown=8;c.decision=2;s.cars.push(c);
+   r.releasing=true;r.lastRelease=s.elapsed;r.joined++;r.gapPlan=null;
   }
  }
  protectionGantry(){return this.gantries.findLastIndex(g=>g<this.work.x-this.work.length-50);}
@@ -228,7 +251,7 @@ export class NetworkSystems {
  beforeStep(dt){
   const s=this.sim;
   if(s.elapsed>=this.phase.endsAt){this.phaseIndex=(this.phaseIndex+1)%this.phases.length;this.phase={...this.phases[this.phaseIndex],endsAt:s.elapsed+this.phases[this.phaseIndex].duration};this.announce(this.phase.name+' · entry and junction demand are changing.');}
-  this.updateZipper();this.updateOffRamps();this.updateRamps(dt);this.updateRampCourtesy();this.updateWorks(dt);this.updateRoadblock();
+  this.updateZipper();this.updateOffRamps();this.prepareRampMerges(dt);this.updateRamps(dt);this.updateRampCourtesy();this.updateWorks(dt);this.updateRoadblock();
  }
  recordExit(c){this.totalExited++;if(c.kind==='ambulance')this.ambulancesExited++;}
  afterStep(){

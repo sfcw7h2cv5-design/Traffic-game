@@ -16,11 +16,12 @@ test('closed slip road holds vehicles; open releases through a safe gap',()=>{
  s.systems.setRampMode(0,'open');run(s,.1);assert(s.cars.includes(c));assert.equal(c.onRamp,0);assert.equal(r.joined,1);
  run(s,90);assert.equal(c.onRamp,null);assert(c.x>r.x);
 });
-test('open slip road waits for physical traffic and obstructions at the joining point',()=>{
- const s=setup(),r=s.systems.ramps[0];const c=queuedCar(s,r);r.mode='open';
- s.spawn(0,r.x-r.mergeLength,0);run(s,.1);assert(r.queue.includes(c));
- s.cars=[];s.incidents=[{id:999,type:'debris',lane:0,x:r.x-r.mergeLength,length:5,clearsAt:Infinity}];run(s,.1);assert(r.queue.includes(c));
- s.incidents=[];run(s,.1);assert(s.cars.includes(c));assert.equal(r.joined,1);
+test('motorway traffic can pass the separate acceleration lane; physical incidents still protect the join',()=>{
+ const s=setup(),r=s.systems.ramps[0],c=queuedCar(s,r),main=s.spawn(0,r.x-r.mergeLength,20);
+ run(s,.1);assert(s.cars.includes(c));assert(!s.occupiedLanes(c).includes(0));assert(s.occupiedLanes(main).includes(0));
+ const blocked=setup(),br=blocked.systems.ramps[0],bc=queuedCar(blocked,br);
+ blocked.incidents=[{id:999,type:'debris',lane:0,x:br.x-br.mergeLength,length:5,clearsAt:Infinity}];run(blocked,.1);assert(br.queue.includes(bc));
+ blocked.incidents=[];run(blocked,.1);assert(blocked.cars.includes(bc));assert.equal(br.joined,1);
 });
 test('slip-road drivers wait for a safe gap without deleting queue vehicles',()=>{
  const s=setup(),r=s.systems.ramps[0];r.mode='open';const first=queuedCar(s,r),second=queuedCar(s,r);
@@ -211,7 +212,7 @@ test('slip-road traffic times a moving gap behind priority traffic without a sto
  for(let n=0;n<600;n++){
   s.step(.1);minimum=Math.min(minimum,c.v);assert(c.x>=before);assert(c.x-before<4);before=c.x;
   assert(priority.v>29.9,'priority traffic braked for a slip-road arrival');
-  if(s.cars.includes(c)){
+  if(c.rampMerging){
    assert(priority.x-priority.length-c.x>8+c.v*1.2);
    transferred=true;break;
   }
@@ -223,7 +224,7 @@ test('a slow arrival still yields to fast traffic already close behind the entry
  c.truck=false;c.length=4.7;c.desired=31;c.acceleration=1.4;c.v=12;
  const priority=s.spawn(0,entry-80,30);priority.truck=false;priority.length=4.7;priority.desired=30;priority.v=30;priority.courtesy=1;priority.cooldown=priority.decision=Infinity;
  const before=priority.x;run(s,1);
- assert(r.queue.includes(c));assert(!s.cars.includes(c));assert(priority.x-before>29.9);assert(priority.v>29.9);
+ assert(s.cars.includes(c));assert(!c.rampMerging);assert(!s.occupiedLanes(c).includes(0));assert(priority.x-before>29.9);assert(priority.v>29.9);
 });
 test('approach matching respects HGV desired speeds and posted approach limits',()=>{
  for(const [truck,desired,limit] of [[true,24,70],[false,31,40]]){

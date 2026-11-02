@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=29';
-import {createSpriteLayout} from './display.js?v=29';
-import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,rampEdges,roadworkCones} from './road.js?v=29';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=30';
+import {createSpriteLayout} from './display.js?v=30';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,rampEdges,roadworkCones} from './road.js?v=30';
 const placeSprites=createSpriteLayout();
 const elements=new Map(),$=s=>{if(!elements.has(s))elements.set(s,document.querySelector(s));return elements.get(s)},sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
@@ -17,7 +17,7 @@ function roadGeometry(){
  if(key!==geometryKey){geometryKey=key;cachedGeometry=createRoadGeometry(w,h,LENGTH,VIEW_LENGTH,viewStart)}
  return cachedGeometry;
 }
-function positionTargets(){const geo=roadGeometry();document.querySelectorAll('[data-gantry]').forEach(b=>{const lane=b.dataset.lane,x=GANTRIES[+b.dataset.gantry],left=geo.leftAt(x);b.style.left=(lane==='all'?left-51:left+(+lane)*geo.laneWidth)+'px';b.style.width=(lane==='all'?42:geo.laneWidth)+'px';const gy=geo.project(x);b.hidden=gy<20||gy>canvas.clientHeight-20;b.style.top=gy+'px'});if(!editor.hidden)positionEditor();positionJunctions()}
+function positionTargets(){const geo=roadGeometry();document.querySelectorAll('[data-gantry]').forEach(b=>{const lane=b.dataset.lane,x=GANTRIES[+b.dataset.gantry],left=geo.leftAt(x);b.style.left=(lane==='all'?Math.min(geo.width-46,left+geo.roadWidth+16):left+(+lane)*geo.laneWidth)+'px';b.style.width=(lane==='all'?42:geo.laneWidth)+'px';const gy=geo.project(x);b.hidden=gy<20||gy>canvas.clientHeight-20;b.style.top=gy+'px'});if(!editor.hidden)positionEditor();positionJunctions()}
 function positionEditor(){const geo=roadGeometry(),h=geo.height;const gy=geo.project(GANTRIES[selected]),eh=editor.offsetHeight;editor.style.top=Math.max(8,Math.min(h-eh-40,gy+(gy<h/2?27:-eh-27)))+'px'}
 $('#gantryTargets').innerHTML=GANTRIES.map((g,i)=>['all',0,1,2].map(l=>`<button class="road-sign-target ${l==='all'?'gantry-side':''}" data-gantry="${i}" data-lane="${l}" aria-label="Gantry 0${i+1} ${l==='all'?'all lanes':'lane '+(+l+1)}" aria-expanded="false" aria-controls="inlineSignals">${l==='all'?`G0${i+1}<small>ALL</small>`:''}</button>`).join('')).join('');
 function renderEditor(){
@@ -140,7 +140,7 @@ function paintScenery(ctx,geo){
   if(points.every(p=>p.y<-100)||points.every(p=>p.y>h+100))continue;
   branches.push({r,exit,points});
  }
- const branchInk=(points,exit,color)=>{const g=ctx.createLinearGradient(0,points[0].y,0,points.at(-1).y);if(exit){g.addColorStop(0,color);g.addColorStop(.65,color);g.addColorStop(1,color+'00');}else{g.addColorStop(0,color+'00');g.addColorStop(.2,color);g.addColorStop(1,color);}return g;};
+ const branchInk=(points,exit,color)=>{const g=ctx.createLinearGradient(0,points[0].y,0,points.at(-1).y);if(exit){g.addColorStop(0,color);g.addColorStop(.95,color);g.addColorStop(1,color+'00');}else{g.addColorStop(0,color+'00');g.addColorStop(.08,color);g.addColorStop(1,color);}return g;};
  const edgePath=(points,key)=>{ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p[key].x,p[key].y):ctx.moveTo(p[key].x,p[key].y));};
  for(const {points,exit} of branches){
   ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.outer.x,p.outer.y):ctx.moveTo(p.outer.x,p.outer.y));
@@ -160,6 +160,22 @@ function paintScenery(ctx,geo){
   const connected=points.filter(p=>p.connected);
   if(connected.length>1){ctx.save();ctx.strokeStyle='#a2b3a299';ctx.setLineDash([3,6]);ctx.beginPath();connected.forEach((p,i)=>{const x=geo.leftAt(geo.unproject(p.y));if(i)ctx.lineTo(x,p.y);else ctx.moveTo(x,p.y);});ctx.stroke();ctx.restore();}
   if(exit){const p=points[Math.floor(points.length*.2)];ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);ctx.strokeStyle='#cad8c1';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(0,5);ctx.lineTo(0,-5);ctx.moveTo(-3,-1);ctx.lineTo(0,-5);ctx.lineTo(3,-1);ctx.stroke();ctx.restore();}
+ }
+ // Dashed auxiliary-lane boundaries and hatched gores make the join and
+ // exit locations explicit, while the solid edge prevents early crossing.
+ for(const r of operations.ramps){
+  for(const exit of [true,false]){
+   const start=exit?r.offStart+r.offDeparture:r.x-r.mergeLength,end=exit?r.offStart+r.offLength*.6:r.x-r.joinTaper;
+   ctx.save();ctx.setLineDash([4,5]);ctx.strokeStyle='#d6e2c6';ctx.lineWidth=1;ctx.beginPath();
+   for(let n=0;n<=30;n++){const x=start+(end-start)*n/30,px=geo.leftAt(x),py=y(x);if(n)ctx.lineTo(px,py);else ctx.moveTo(px,py);}ctx.stroke();ctx.restore();
+   const point=(exit?offRampPoint:slipRoadPoint)(geo,r,(start+end)/2);
+   ctx.save();ctx.fillStyle='#c8d8b9';ctx.font='bold 8px sans-serif';ctx.textAlign='right';ctx.fillText(exit?'DECEL / EXIT':'ACCEL',point.x-geo.laneWidth*.25-4,point.y+3);ctx.restore();
+   const low=exit?r.offStart+r.offLength*.6:r.x-r.mergeLength-180,high=exit?r.offStart+r.offLength:r.x-r.mergeLength;
+   const path=exit?offRampPoint:slipRoadPoint,edge=[];
+   for(let n=0;n<=30;n++){const x=low+(high-low)*n/30,p=path(geo,r,x),inner=rampEdges(geo,p).inner;edge.push({inner,main:{x:geo.leftAt(x),y:y(x)}});}
+   ctx.save();ctx.beginPath();edge.forEach((p,i)=>i?ctx.lineTo(p.inner.x,p.inner.y):ctx.moveTo(p.inner.x,p.inner.y));for(let n=edge.length-1;n>=0;n--)ctx.lineTo(edge[n].main.x,edge[n].main.y);ctx.closePath();ctx.clip();ctx.strokeStyle='#9bae9077';ctx.lineWidth=1;ctx.beginPath();
+   const minY=Math.min(y(low),y(high)),maxY=Math.max(y(low),y(high));for(let py=minY-20;py<maxY+20;py+=7){ctx.moveTo(0,py);ctx.lineTo(w,py+w*.4);}ctx.stroke();ctx.restore();
+  }
  }
  ctx.setLineDash([8,12]);for(const offset of [-roadW/2+lw,-roadW/2+lw*2]){roadPath(ctx,geo,offset);ctx.strokeStyle='#82938b88';ctx.lineWidth=1;ctx.stroke();}ctx.setLineDash([]);
  ctx.font='9px sans-serif';ctx.fillStyle='#91aa99';ctx.textAlign='right';
@@ -207,7 +223,7 @@ if(work.sceneId!=null&&work.status!=='complete'){
 }
 const incidentLabels=[],incidentMarkers=[];
 const vehicles=[...sim.cars,...operations.ramps.flatMap(r=>r.queue)];
-for(const c of placeSprites(vehicles,sim.incidents,{left:geo.leftAt(0),laneWidth:lw,project:y,overview:VIEW_LENGTH===LENGTH,laneX:geo.laneX,angleAt:geo.angleAt,offRampPosition:c=>offRampPoint(geo,operations.ramps[c.offRamp],c.x),rampPosition:c=>slipRoadPoint(geo,operations.ramps[c.onRamp??c.slipRamp],c.x)})){
+for(const c of placeSprites(vehicles,sim.incidents,{left:geo.leftAt(0),laneWidth:lw,project:y,overview:VIEW_LENGTH===LENGTH,laneX:geo.laneX,angleAt:geo.angleAt,offRampPosition:c=>offRampPoint(geo,operations.ramps[c.offRamp],c.x),rampPosition:c=>slipRoadPoint(geo,operations.ramps[c.onRamp??c.slipRamp],c.x,c)})){
  const {cx,cy,width}=c;const height=c.designHeight;
  if(cy+c.height<0||cy>h)continue;
  if(c.type==='roadworks'||c.type==='police-clearance'){if(!c.bodyIndex)incidentLabels.push(c);continue;}

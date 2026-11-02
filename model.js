@@ -5,15 +5,21 @@ export const EXIT_CLEAR_START = LENGTH - 500;
 export const GANTRIES = [450, 1550, 2650, 3750, 4850, 6450, 8050];
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
+// Parallel acceleration/deceleration lanes are separate traffic corridors.
+function vehicleLanes(c){
+ if(c.onRamp!=null)return c.rampMerging?[0,10+c.onRamp]:[10+c.onRamp];
+ if(c.offRamp!=null&&c.offProgress>=1)return [20+c.offRamp];
+ return Math.abs(c.visualLane-c.lane)>.2&&c.fromLane!==c.lane?[c.lane,c.fromLane]:[c.lane];
+}
 // Snapshot only fields used by neighbour queries. Driver state stays on the live
 // vehicle; every following calculation still reads the same frozen time step.
 function trafficSnapshot(cars){
-  return cars.map(c=>({id:c.id,lane:c.lane,fromLane:c.fromLane,visualLane:c.visualLane,x:c.x,v:c.v,length:c.length,emergency:c.emergency}));
+  return cars.map(c=>({id:c.id,lane:c.lane,fromLane:c.fromLane,visualLane:c.visualLane,x:c.x,v:c.v,length:c.length,emergency:c.emergency,onRamp:c.onRamp,rampMerging:c.rampMerging,offRamp:c.offRamp,offProgress:c.offProgress}));
 }
 function trafficIndex(traffic){
   const lanes=new Map();
   for(let order=0;order<traffic.length;order++){
-    const car=traffic[order],occupied=Math.abs(car.visualLane-car.lane)>.2&&car.fromLane!==car.lane?[car.lane,car.fromLane]:[car.lane];
+    const car=traffic[order],occupied=vehicleLanes(car);
     for(const lane of occupied){if(!lanes.has(lane))lanes.set(lane,[]);lanes.get(lane).push({car,order,back:car.x-car.length});}
   }
   for(const entries of lanes.values()){
@@ -41,7 +47,7 @@ export class Simulation {
   constructor(random = Math.random) {
     this.random = random;
     this.signals = GANTRIES.map(() => Array.from({ length: 3 }, () => ({ speed: 70, mode: 'open' })));
-    this.cars = []; this.incidents = []; this.exits = [];
+    this.cars = []; this.incidents = []; this.exits = [];this.mergeTurns=new Map();
     this.elapsed = 0; this.waiting = 0; this.id = 0; this.scenario = 'commute';
     this.nextArrival = 1 + random() * 3;
     this.nextIncident = 35 + random() * 30;
@@ -105,7 +111,7 @@ export class Simulation {
       const leader=indexedLeader(index,car,lane);
       if(leader&&leader.back<pos){pos=leader.back;speed=leader.car.v;}
     }else for (const c of traffic) {
-      const occupying = c.lane === lane || (Math.abs(c.visualLane - c.lane) > .2 && c.fromLane === lane);
+      const occupying = vehicleLanes(c).includes(lane);
       if (c.id !== car.id && occupying && c.x >= car.x && c.x - c.length < pos) {
         pos = c.x - c.length; speed = c.v;
       }
@@ -113,7 +119,7 @@ export class Simulation {
     for (const i of this.incidentBodies()) if (i.lane === lane && i.x >= car.x && i.x - i.length < pos) {
       pos = i.x - i.length; speed = 0;
     }
-    for (let g = 0; g < GANTRIES.length; g++) if (lane>=0 && this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
+    for (let g = 0; g < GANTRIES.length; g++) if (lane>=0 && lane<3 && this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
       pos = Math.max(car.x, GANTRIES[g] - 8); speed = 0;
     }
     if(car.blocker&&this.systemsEnabled&&['rolling','clearing'].includes(this.systems.roadblock.status)){const hold=this.systems.roadblock.x-this.systems.roadblock.length-100;if(car.x<hold&&hold<pos){pos=hold;speed=0;}}
@@ -144,7 +150,7 @@ export class Simulation {
     }
     if (type === 'breakdown') lane = 0;
     // Use an actual vehicle where possible, preserving its position and appearance.
-    const vehicle = this.cars.filter(c => c.lane === lane && c.v > 10 && !c.kind && c.onRamp==null && Math.abs(c.visualLane-c.lane)<.02 && Math.abs(c.x-x)<350 && this.incidentPositionAllowed(c.x))
+    const vehicle = this.cars.filter(c => c.lane === lane && c.v > 10 && !c.kind && c.onRamp==null && c.offRamp==null && Math.abs(c.visualLane-c.lane)<.02 && Math.abs(c.x-x)<350 && this.incidentPositionAllowed(c.x))
       .sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0];
     if(options.requireVehicle&&!vehicle)return null;
     if(!vehicle&&this.cars.some(c=>this.occupiedLanes(c).includes(lane)&&Math.abs(c.x-x)<40))return null;
@@ -177,7 +183,7 @@ export class Simulation {
     let bodies=[],victims=[];
     if(type==='pile-up'){
       for(const lane of lanes){
-        const car=this.cars.filter(c=>c.lane===lane&&!c.kind&&c.onRamp==null&&Math.abs(c.visualLane-c.lane)<.02&&Math.abs(c.x-x)<180&&this.incidentPositionAllowed(c.x)).sort((a,b)=>Math.abs(a.x-x)-Math.abs(b.x-x))[0];
+        const car=this.cars.filter(c=>c.lane===lane&&!c.kind&&c.onRamp==null&&c.offRamp==null&&Math.abs(c.visualLane-c.lane)<.02&&Math.abs(c.x-x)<180&&this.incidentPositionAllowed(c.x)).sort((a,b)=>Math.abs(a.x-x)-Math.abs(b.x-x))[0];
         if(!car)return null;victims.push(car);bodies.push({lane,x:car.x,length:car.length,truck:car.truck,vehicleId:car.id});
       }
     }else{
@@ -191,8 +197,14 @@ export class Simulation {
     this.lastEvent=`${type==='pile-up'?'Multi-vehicle collision':'Shed load'} · Lanes ${lanes.map(l=>l+1).join(' & ')} · ${(x/1000).toFixed(2)} km. Protect both lanes upstream.`;this.eventId++;
     return incident;
   }
+  mergeSite(car,target){
+    let g=GANTRIES.findIndex((x,i)=>x>=car.x-30&&this.signals[i][car.lane]?.mode==='closed');
+    if(g<0)g=GANTRIES.findLastIndex((x,i)=>x<=car.x&&this.signals[i][car.lane]?.mode==='closed');
+    const hazard=this.incidentBodies().filter(i=>i.lane===car.lane&&i.x>=car.x-25).sort((a,b)=>a.x-b.x)[0];
+    return car.lane+'>'+target+':'+(g>=0?'g'+g:hazard?'i'+hazard.id:'a'+GANTRIES.findLastIndex(x=>x<=car.x));
+  }
   occupiedLanes(c) {
-    return Math.abs(c.visualLane-c.lane)>.2?[c.lane,c.fromLane]:[c.lane];
+    return vehicleLanes(c);
   }
   enforceSeparation() {
     // Reserve both lanes throughout a manoeuvre; enforce a physical bumper gap
@@ -345,6 +357,7 @@ export class Simulation {
       const transitionIndex=c.transitionGantry??-1,transitionGoal=c.evacuationGoal;
       const transitionPlan=transitionIndex>=0&&transitionGoal!=null&&c.x<GANTRIES[transitionIndex]&&c.x>=GANTRIES[transitionIndex]-35&&this.signals[transitionIndex][transitionGoal].mode==='open';
       if(!transitionPlan)c.transitionGantry=null;
+      const localRestriction=[0,1,2].some(l=>this.signalAt(c.x,l).mode==='closed'||this.laneHazardAhead(c.x,l))||GANTRIES.some((x,g)=>x>c.x&&x-c.x<650&&this.signals[g].some(s=>s.mode==='closed'));
       const mandatory=currentClosed||hazard,forced=mandatory||upcoming>=0||advisory||transitionPlan;
       const rampCourtesy=!c.emergency&&c.lane===0&&(c.zipperYieldEntry!=null||c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity));
       const approachingSiren=!c.emergency&&sirens.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<600);
@@ -384,7 +397,7 @@ export class Simulation {
           if(lane<0||lane>2)return false;
           const routeStep=forced&&evacuationSteps.includes(lane),escape=routeStep&&(mandatory||boundaryTransition);
           const laneMode=this.signalAt(c.x,lane).mode;
-          if(lane<0||lane>2||(!escape&&this.laneHazardAhead(c.x,lane))||(c.truck&&lane===2&&!forced)||(laneMode==='closed'&&!escape)||(laneMode.startsWith('merge')&&!routeStep))return false;
+          if(lane<0||lane>2||(!escape&&this.laneHazardAhead(c.x,lane))||(c.truck&&lane===2&&!forced&&!localRestriction)||(laneMode==='closed'&&!escape)||(laneMode.startsWith('merge')&&!routeStep))return false;
           if(!escape&&GANTRIES.some((x,g)=>x>c.x&&x-c.x<650&&this.signals[g][lane].mode==='closed'))return false;
           let ahead = this.obstacle(c, lane, this.cars);
           if(escape&&lane!==c.evacuationGoal&&boundaryTransition&&this.signals[upcoming][lane].mode==='closed'){
@@ -396,7 +409,7 @@ export class Simulation {
             ahead={gap:Math.max(.1,pos-c.x),speed};
           }
           let behind=null;
-          for(const o of this.cars)if(o.id!==c.id&&(o.lane===lane||Math.abs(o.visualLane-o.lane)>.2&&o.fromLane===lane)&&o.x<c.x&&(!behind||o.x>behind.x))behind=o;
+          for(const o of this.cars)if(o.id!==c.id&&this.occupiedLanes(o).includes(lane)&&o.x<c.x&&(!behind||o.x>behind.x))behind=o;
           const rearGap = behind ? c.x - c.length - behind.x : 1000;
           const rearNeeded = forced&&c.v<2&&(behind?.v??0)<2?1.99:behind ? 5 + behind.v * (forced ? .85 : 1.5) + Math.max(0, behind.v - c.v) * (forced ? 1.5 : 3) : 0;
           const horizon=forced||c.emergency?2:4;
@@ -434,6 +447,10 @@ export class Simulation {
           }
         }
         if (target !== c.lane) {
+          if(forced){
+            const receiver=this.cars.find(o=>o.yieldingFor===c.id&&o.lane===target);
+            if(receiver)this.mergeTurns.set(this.mergeSite(c,target),{carId:receiver.id,x:c.x,lane:target});
+          }
           c.laneChange={from:c.visualLane,to:target,progress:0,duration:c.truck?5.5:4.5};
           c.fromLane = c.lane; c.lane = target; c.cooldown = 8 + this.random() * 4;c.mergeRequest=null;
         }
@@ -441,26 +458,36 @@ export class Simulation {
     }
     // One waiting merger may ask its nearest rear neighbour to make space.
     // Vehicles already alongside it should continue, rather than brake for it.
-    const yieldRequests=new Map();
-    for(const merger of this.cars){
+    const yieldRequests=new Map(),requestedSites=new Set();
+    for(const merger of [...this.cars].sort((a,b)=>b.x-a.x)){
       if(merger.mergeRequest==null)continue;
+      const site=this.mergeSite(merger,merger.mergeRequest),turn=this.mergeTurns.get(site);
+      if(turn){const main=this.cars.find(c=>c.id===turn.carId);if(main&&this.occupiedLanes(main).includes(turn.lane)&&main.x-main.length<turn.x)continue;this.mergeTurns.delete(site);}
+      if(requestedSites.has(site))continue;
       const ahead=this.obstacle(merger,merger.mergeRequest);
       if(ahead.gap<(merger.v<2?2:6+merger.v*.85))continue;
       let receiver=null;
-      for(const c of this.cars)if(c.id!==merger.id&&!c.emergency&&c.lane===merger.mergeRequest&&c.x<merger.x-merger.length-2&&merger.x-c.x<120&&(!receiver||c.x>receiver.x))receiver=c;
-      if(!receiver)continue;
+      for(const c of this.cars){
+        if(c.id===merger.id||c.emergency||c.onRamp!=null||c.offRamp!=null||c.lane!==merger.mergeRequest||c.x>=merger.x-merger.length-2||merger.x-c.x>350)continue;
+        const gap=merger.x-merger.length-c.x,target=Math.max(.5,merger.v+2);
+        const neededToEase=c.v>merger.v+5?Math.max(12,(c.v*c.v-target*target)/(2*1.5)+c.v*.5):2;
+        if(gap<neededToEase)continue;
+        if(!receiver||c.x>receiver.x)receiver=c;
+      }
+      if(!receiver||yieldRequests.has(receiver.id))continue;
       // A vehicle alongside the merger will pass first; don't slow somebody
       // behind that vehicle to reserve a gap the merger cannot yet reach.
       const alongside=this.cars.some(c=>c.id!==merger.id&&c.id!==receiver.id&&this.occupiedLanes(c).includes(merger.mergeRequest)&&c.x>=merger.x-merger.length-2&&c.x-c.length<=merger.x+2);
       if(alongside)continue;
       const gap=merger.x-merger.length-receiver.x;
       const needed=5+receiver.v*.9+Math.max(0,receiver.v-merger.v)*2;
-      if(gap<needed+8)yieldRequests.set(receiver.id,merger.id);
+      const passingBeforeGap=this.cars.some(c=>c.id!==merger.id&&c.id!==receiver.id&&this.occupiedLanes(c).includes(merger.mergeRequest)&&c.x>receiver.x&&c.x<merger.x);
+      if(gap<needed+8||passingBeforeGap){yieldRequests.set(receiver.id,merger.id);requestedSites.add(site);}
     }
     const movementSnapshot=trafficSnapshot(this.cars);
     this._stepTrafficIndexes.set(movementSnapshot,trafficIndex(movementSnapshot));
     for(const c of this.cars){
-      if(c.onRamp!=null){const ramp=this.systems.ramps[c.onRamp],join=ramp.x;c.rampProgress=Math.max(0,Math.min(1,(c.x-(join-ramp.mergeLength))/ramp.mergeLength));if(c.x>=join){c.onRamp=null;c.slipRamp=null;}}
+      if(c.onRamp!=null){const ramp=this.systems.ramps[c.onRamp],join=ramp.x;c.rampProgress=Math.max(0,Math.min(1,(c.x-(join-ramp.mergeLength))/ramp.mergeLength));if(c.x>=join){c.onRamp=null;c.slipRamp=null;c.rampMerging=false;}}
       if(c.recovering!=null){c.v=0;continue;}
       if(c.lane<0){
         if(c.kind==='recovery'&&c.recoveryTarget==null){c.v=0;c.a=0;continue;}
@@ -470,7 +497,13 @@ export class Simulation {
         const remaining=berth?Math.max(0,berth.x-25-c.x):Infinity;
         c.x+=Math.min(remaining,Math.max(0,front.gap-2),c.v*dt);continue;
       }
-      let front=this.obstacle(c,c.lane,movementSnapshot);
+      const drivingLane=c.onRamp!=null&&!c.rampMerging?10+c.onRamp:c.offRamp!=null&&c.offProgress>=1?20+c.offRamp:c.lane;
+      let front=this.obstacle(c,drivingLane,movementSnapshot);
+      if(c.onRamp!=null&&!c.rampMerging){
+       const r=this.systems.ramps[c.onRamp],end=r.x-r.joinTaper;
+       const available=Math.max(.1,end-c.x);
+       if(!c.accelGap&&available<front.gap)front={gap:available,speed:0};
+      }
 
       if (Math.abs(c.visualLane - c.lane) > .2) {
         const oldFront = this.obstacle(c, c.fromLane, movementSnapshot);
@@ -481,16 +514,29 @@ export class Simulation {
       let desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
       if(!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity))desired=Math.min(desired,Math.max(4,c.rampYieldTargetSpeed??desired));
       if(!c.emergency&&c.zipperYieldTarget!=null)desired=Math.min(desired,c.zipperYieldTarget);
+      if(c.onRamp!=null&&!c.rampMerging)desired=Math.min(desired,c.accelTarget??desired);
+      if(c.offRamp!=null&&c.offProgress>=1){
+       const r=this.systems.ramps[c.offRamp],remaining=Math.max(0,r.offStart+r.offLength-c.x);
+       desired=Math.min(desired,Math.sqrt(12*12+2*1.5*remaining));
+      }
       const yielding=yieldRequests.has(c.id);
-      c.yieldingFor=yielding?yieldRequests.get(c.id):null;
-      if(yielding&&!c.emergency)desired=Math.min(desired,Math.max(4,c.v-1.2));
+      const request=yielding?yieldRequests.get(c.id):null;
+      if(request!==c.yieldingFor)c.mergeYieldBase=c.v;
+      c.yieldingFor=request;
+
       // A driver initially accepts the checked joining gap, then opens their
       // normal following distance progressively along the acceleration lane.
-      const mergeHeadway=c.onRamp!=null?Math.min(c.headway,1.2)+(c.headway-Math.min(c.headway,1.2))*clamp(c.rampProgress??0,0,1):c.headway;
+      const mergeHeadway=c.mergeHeadwayStart!=null?Math.min(c.headway,1.2)+(c.headway-Math.min(c.headway,1.2))*clamp((c.x-c.mergeHeadwayStart)/600,0,1):c.headway;
       const headway = mergeHeadway * (rain ? 1.35 : unruly ? .65 : 1);
       const closing = c.v - front.speed;
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
       let acceleration = c.acceleration * (1 - (c.v / desired) ** 4 - (wanted / front.gap) ** 2);
+      if(yielding&&!c.emergency){
+        const merger=this.cars.find(o=>o.id===request),target=Math.max(.4,Math.min((c.mergeYieldBase??c.v)-2,(merger?.v??c.v)+2));
+        // Courtesy opens a rolling gap with comfortable braking; following
+        // and real obstructions can still require stronger deceleration.
+        acceleration=Math.min(acceleration,clamp((target-c.v)*.6,-1.5,c.acceleration));
+      }
       // Each stopped driver waits their own reaction time as the queue releases.
       if (c.v < .4 && front.speed < .3 && front.gap < 5.5) c.restart = c.reaction;
       else c.restart = Math.max(0, c.restart - dt);
@@ -502,7 +548,8 @@ export class Simulation {
       c.hardBraking=hardBraking;
       const nextV = Math.max(0, c.v + c.a * dt);
       const requested = Math.max(0, (c.v + nextV) * .5 * dt);
-      const move = Math.min(Math.max(0, front.gap - 2), requested);
+      const rampBound=c.onRamp!=null&&!c.rampMerging?Math.max(0,this.systems.ramps[c.onRamp].x-this.systems.ramps[c.onRamp].joinTaper-2-c.x):Infinity;
+      const move = Math.min(Math.max(0, front.gap - 2), requested,rampBound);
       c.x += move; c.v = move < requested ? move / dt : nextV;
       c.braking = c.a < -.6;
       // Steering eases into and out of a committed manoeuvre. Keep a bounded
