@@ -15,31 +15,14 @@ export function createRoadGeometry(width,height,length,viewLength=length,viewSta
  return {width,height,roadWidth,laneWidth,leftAt,center,centerAtY,project,unproject,scale,scaleAt,laneX,angleAt};
 }
 
-// Keep the full physical approach, but turn its outer feeder in from the
-// map edge. Only the feeder is schematic; the main road projection is fixed.
+// Long, shallow slip-road tapers share the motorway world projection.
+// The outside approach remains parallel to the motorway, with no right-angle
+// feeder. Geometry never depends on traffic or a queue length.
 export function slipRoadPoint(geometry,ramp,worldX){
- const mergeLength=ramp.mergeLength??600,d=Math.max(0,ramp.x-worldX),outside=geometry.laneWidth+4;
- if(d<=mergeLength){
-  const t=d/mergeLength,shown=ramp.x-d*.7;
-  const smooth=t*t*t*(10+t*(-15+6*t)),slope=30*t*t*(1-t)*(1-t);
-  const centerSlope=(geometry.center(shown+1)-geometry.center(shown-1))/2;
-  return {x:geometry.laneX(shown,0)-outside*smooth,y:geometry.project(shown),angle:Math.atan2(centerSlope*.7+outside*slope/mergeLength,geometry.scale*.7)};
- }
- const shown=ramp.x-mergeLength*.7,base={x:geometry.laneX(shown,0)-outside,y:geometry.project(shown)},angle=geometry.angleAt(shown);
- return feederCurve(geometry,base,angle,d-mergeLength,250,false);
-}
-// A circular bend followed by an open feeder keeps a bounded bend radius.
-// Local rotations match the carriageway tangent at every branch connection.
-function feederCurve(geometry,base,angle,d,turnLength,exit){
- const radius=geometry.laneWidth*.45,t=Math.min(1,Math.max(0,d/turnLength));
- const turn=(exit?-Math.PI/2:Math.PI/2)-angle,phi=angle+turn*t;
- const extra=Math.max(0,d-turnLength),m=radius*Math.abs(turn)/turnLength;
- const extension=m*extra+geometry.width*(extra/250)**2;
- const x=base.x+radius*(Math.cos(phi)-Math.cos(angle))-extension;
- const y=base.y+radius*(Math.sin(phi)-Math.sin(angle));
- const dx=extra>0?-m-2*geometry.width*extra/62500:-radius*Math.sin(phi)*turn/turnLength;
- const dy=extra>0?0:radius*Math.cos(phi)*turn/turnLength;
- return {x,y,angle:Math.atan2(exit?dx:-dx,exit?-dy:dy)};
+ const length=ramp.approachLength??1100,d=Math.max(0,ramp.x-worldX),t=Math.min(1,d/length);
+ const outside=geometry.laneWidth*1.8+8,smooth=t*t*(3-2*t);
+ const slope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2+outside*6*t*(1-t)/length;
+ return {x:geometry.laneX(worldX,0)-outside*smooth,y:geometry.project(worldX),angle:Math.atan2(slope,geometry.scale)};
 }
 export function rampEdges(geometry,p){
  const half=geometry.laneWidth*.4/2,dx=half*Math.cos(p.angle),dy=half*Math.sin(p.angle);
@@ -68,8 +51,12 @@ export function roadworkCones(geometry,work){
  return result;
 }
 
-// Leave before the incoming feeder, following a long curve out of the map.
+// The exit diverges gradually before the joining taper, then fades into the
+// local road network. It never turns into a horizontal cross-road.
 export function offRampPoint(geometry,ramp,worldX){
- const start=ramp.offStart??ramp.x-1150,length=ramp.offLength??350;
- return feederCurve(geometry,{x:geometry.laneX(start,0),y:geometry.project(start)},geometry.angleAt(start),Math.max(0,worldX-start),length/2,true);
+ const start=ramp.offStart??ramp.x-1150,length=ramp.offLength??450;
+ const t=Math.max(0,Math.min(1,(worldX-start)/length)),outside=geometry.laneWidth*.7+4;
+ const smooth=t*t*(3-2*t);
+ const slope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2-outside*6*t*(1-t)/length;
+ return {x:geometry.laneX(worldX,0)-outside*smooth,y:geometry.project(worldX),angle:Math.atan2(slope,geometry.scale)};
 }

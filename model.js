@@ -116,7 +116,6 @@ export class Simulation {
     for (let g = 0; g < GANTRIES.length; g++) if (lane>=0 && this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
       pos = Math.max(car.x, GANTRIES[g] - 8); speed = 0;
     }
-    if(car.zipperStop!=null&&car.x<car.zipperStop&&car.zipperStop<pos){pos=car.zipperStop;speed=0;}
     if(car.blocker&&this.systemsEnabled&&['rolling','clearing'].includes(this.systems.roadblock.status)){const hold=this.systems.roadblock.x-this.systems.roadblock.length-100;if(car.x<hold&&hold<pos){pos=hold;speed=0;}}
     return { gap: Math.max(.1, pos - car.x), speed };
   }
@@ -347,7 +346,7 @@ export class Simulation {
       const transitionPlan=transitionIndex>=0&&transitionGoal!=null&&c.x<GANTRIES[transitionIndex]&&c.x>=GANTRIES[transitionIndex]-35&&this.signals[transitionIndex][transitionGoal].mode==='open';
       if(!transitionPlan)c.transitionGantry=null;
       const mandatory=currentClosed||hazard,forced=mandatory||upcoming>=0||advisory||transitionPlan;
-      const rampCourtesy=!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity);
+      const rampCourtesy=!c.emergency&&c.lane===0&&(c.zipperYieldEntry!=null||c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity));
       const approachingSiren=!c.emergency&&sirens.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<600);
       let destinations=[];
       if(transitionPlan){
@@ -413,7 +412,7 @@ export class Simulation {
           const candidates=evacuationSteps;
           target = candidates.find(safe) ?? c.lane;
         } else {
-          if(rampCourtesy&&c.cooldown<=0&&safe(c.lane+1)){target=c.lane+1;c.rampClearUntilX=c.rampYieldEntry+80;}
+          if(rampCourtesy&&c.cooldown<=0&&safe(c.lane+1)){target=c.lane+1;c.rampClearUntilX=(c.zipperYieldEntry??c.rampYieldEntry)+80;}
           // Return left unless actively passing a slower vehicle there.
           const left = c.lane - 1;
           if (target===c.lane && !c.emergency && left >= 0 && !(c.x<(c.rampClearUntilX??-Infinity)) && safe(left)) {
@@ -481,6 +480,7 @@ export class Simulation {
       const limit = this.speedTarget(c);
       let desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
       if(!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity))desired=Math.min(desired,Math.max(4,c.rampYieldTargetSpeed??desired));
+      if(!c.emergency&&c.zipperYieldTarget!=null)desired=Math.min(desired,c.zipperYieldTarget);
       const yielding=yieldRequests.has(c.id);
       c.yieldingFor=yielding?yieldRequests.get(c.id):null;
       if(yielding&&!c.emergency)desired=Math.min(desired,Math.max(4,c.v-1.2));
@@ -492,7 +492,7 @@ export class Simulation {
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
       let acceleration = c.acceleration * (1 - (c.v / desired) ** 4 - (wanted / front.gap) ** 2);
       // Each stopped driver waits their own reaction time as the queue releases.
-      if (c.v < .4 && (front.gap < 8 || front.speed < .5 && front.gap < 20)) c.restart = c.reaction;
+      if (c.v < .4 && front.speed < .3 && front.gap < 5.5) c.restart = c.reaction;
       else c.restart = Math.max(0, c.restart - dt);
       if (c.restart > 0 && c.v < .4) acceleration = Math.min(0, acceleration);
       const targetA = clamp(acceleration, -6, c.acceleration);

@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=28';
-import {createSpriteLayout} from './display.js?v=28';
-import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,rampEdges,roadworkCones} from './road.js?v=28';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=29';
+import {createSpriteLayout} from './display.js?v=29';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,rampEdges,roadworkCones} from './road.js?v=29';
 const placeSprites=createSpriteLayout();
 const elements=new Map(),$=s=>{if(!elements.has(s))elements.set(s,document.querySelector(s));return elements.get(s)},sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
@@ -140,11 +140,12 @@ function paintScenery(ctx,geo){
   if(points.every(p=>p.y<-100)||points.every(p=>p.y>h+100))continue;
   branches.push({r,exit,points});
  }
+ const branchInk=(points,exit,color)=>{const g=ctx.createLinearGradient(0,points[0].y,0,points.at(-1).y);if(exit){g.addColorStop(0,color);g.addColorStop(.65,color);g.addColorStop(1,color+'00');}else{g.addColorStop(0,color+'00');g.addColorStop(.2,color);g.addColorStop(1,color);}return g;};
  const edgePath=(points,key)=>{ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p[key].x,p[key].y):ctx.moveTo(p[key].x,p[key].y));};
- for(const {points} of branches){
+ for(const {points,exit} of branches){
   ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.outer.x,p.outer.y):ctx.moveTo(p.outer.x,p.outer.y));
   for(let i=points.length-1;i>=0;i--)ctx.lineTo(points[i].inner.x,points[i].inner.y);
-  ctx.closePath();ctx.fillStyle='#35464a';ctx.fill();
+  ctx.closePath();ctx.fillStyle=branchInk(points,exit,'#35464a');ctx.fill();
  }
  // Open the carriageway edge only where a branch actually meets it.
  const openings=branches.map(b=>b.points.filter(p=>p.connected)).filter(p=>p.length).map(points=>({low:Math.min(...points.map(p=>p.inner.y)),high:Math.max(...points.map(p=>p.inner.y))}));
@@ -152,6 +153,7 @@ function paintScenery(ctx,geo){
  for(let py=-80;py<h+80;py+=2){if(openings.some(o=>py>=o.low-2&&py<=o.high+2))continue;ctx.moveTo(geo.centerAtY(py)-roadW/2,py);ctx.lineTo(geo.centerAtY(py+2)-roadW/2,py+2);}
  ctx.stroke();
  for(const {points,exit} of branches){
+  ctx.strokeStyle=branchInk(points,exit,'#a2b3a2');
   const outside=points.filter(p=>p.outer.x<geo.leftAt(geo.unproject(p.outer.y)));if(outside.length){edgePath(outside,'outer');ctx.stroke();}
   const separate=points.filter(p=>!p.connected);if(separate.length){edgePath(separate,'inner');ctx.stroke();}
   // Short broken edge lines guide traffic through the open mouth.
@@ -226,7 +228,6 @@ GANTRIES.forEach((g,gi)=>{const gy=y(g),left=geo.leftAt(g);if(gy<20||gy>h-20)ret
  ctx.fillStyle='#e1c4a3';ctx.font='7px sans-serif';ctx.fillText(c.status==='recovering'?'LOADING':c.status==='recovery-en-route'?'TOW COMING':c.status==='awaiting-recovery'?'TOW CALLED':c.status==='workers-withdrawn'?'WORK PAUSED':'CREWS HERE',labelX,labelY+24);
 }
 for(const c of incidentMarkers){ctx.strokeStyle='#ffab85';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(c.cx,c.cy+3,7,0,Math.PI*2);ctx.stroke();}
-if(VIEW_LENGTH===LENGTH){ctx.textAlign='center';ctx.fillStyle='#b8d99e';ctx.font='bold 9px sans-serif';ctx.fillText('↑ FREE EXIT',geo.center(LENGTH-250),14);}
 ctx.textAlign='center';ctx.fillStyle='#93b29e';ctx.font='9px sans-serif';ctx.fillText('↑     ↑     ↑',w/2,h-18)}
 function updateDashboard(){
  updateInlineReading();updateResponseStatus();

@@ -2,7 +2,7 @@
 export class NetworkSystems {
  constructor(sim,{length,gantries}){
   this.sim=sim;this.length=length;this.gantries=gantries;
-  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,offStart:x-1150,offLength:350,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0}));
+  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,offStart:x-1150,offLength:450,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0}));
   this.phases=[{name:'Normal demand',multiplier:1,duration:90},{name:'Morning rush',multiplier:1.8,duration:180},{name:'Demand easing',multiplier:.75,duration:100},{name:'Stadium traffic',multiplier:2.2,duration:160},{name:'Normal demand',multiplier:1,duration:150}];
   this.phaseIndex=0;this.phase={...this.phases[0],endsAt:90};
   this.work={x:4200,length:150,lanes:[0],announceAt:45,startsAt:150,status:'scheduled',remaining:180,sceneId:null};
@@ -104,7 +104,7 @@ export class NetworkSystems {
  // At speed, the existing moving-gap matching retains mainline priority.
  updateZipper(){
   const s=this.sim,traffic=this.rampTraffic();
-  for(const c of s.cars)delete c.zipperStop;
+  for(const c of s.cars){delete c.zipperYieldTarget;delete c.zipperYieldEntry;}
   for(const r of this.ramps){
    const c=r.queue[0],entry=r.x-r.mergeLength;
    if(r.zipperMain!=null){const main=s.cars.find(c=>c.id===r.zipperMain);if(!main||main.x>=entry){r.zipperTurn='ramp';r.zipperMain=null;}}
@@ -112,8 +112,14 @@ export class NetworkSystems {
    const rear=traffic.filter(c=>c.x<entry&&c.onRamp==null).sort((a,b)=>b.x-a.x)[0];
    if(!rear||rear.emergency||rear.v>12||c.v>12)continue;
    if(r.zipperTurn==='main'){r.zipperMain??=rear.id;continue;}
-   const stop=entry-c.length-12;
-   if(rear.x<stop){rear.zipperStop=stop;r.zipperRear=rear.id;}
+   // Open a rolling gap by easing one rear driver, never by adding a
+   // stationary virtual stop line to an otherwise open motorway.
+   if(rear.x<entry-c.length-4){
+    const base=r.zipperRear===rear.id?r.zipperBaseSpeed:rear.v;
+    r.zipperRear=rear.id;r.zipperBaseSpeed=base;
+    rear.zipperYieldTarget=Math.max(.5,base-Math.min(2,base*.25));
+    rear.zipperYieldEntry=entry;
+   }
   }
  }
  updateOffRamps(){

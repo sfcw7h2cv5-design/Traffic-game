@@ -465,3 +465,29 @@ test('all three lanes flow across the top boundary without a virtual downstream 
  assert.equal(s.cars.length,0);assert.equal(s.exits.length,3);
  for(const c of cars)assert(c.v>24.9,'driver braked for an off-network obstruction');
 });
+test('a queue restarts on a moving safe gap without waiting for an eight-metre gate',()=>{
+ const s=new Simulation(seeded(12));quiet(s);s.cars=[];
+ const cars=[];for(let n=0;n<24;n++){
+  const c=s.spawn(0,1000-n*8.2,0);Object.assign(c,{truck:false,length:4.7,desired:25,courtesy:1,cooldown:Infinity,decision:Infinity,acceleration:1.3,reaction:.9,headway:1.8});cars.push(c);
+ }
+ s.incidents=[{x:1007,length:5,lane:0,type:'debris'}];run(s,10);s.incidents=[];
+ let twentieth=null;
+ for(let n=0;n<600;n++){
+  const before=new Map(s.cars.map(c=>[c.id,c.x]));s.step(.1);
+  for(const c of s.cars){assert(c.x>=before.get(c.id));assert(s.obstacle(c,0).gap>=1.99);}
+  if(cars.filter(c=>c.v>1).length>=20&&twentieth==null)twentieth=(n+1)/10;
+ }
+ assert(twentieth!=null&&twentieth<55,'queue discharge has an artificial long startup delay');
+});
+test('open 30 to 50 to 70 mph gantries do not stop or meter a moving platoon',()=>{
+ const s=new Simulation(seeded(54));quiet(s);s.cars=[];
+ s.signals[3].forEach(c=>c.speed=30);s.signals[4].forEach(c=>c.speed=50);
+ const cars=[];for(let n=0;n<36;n++){
+  const c=s.spawn(n%3,4700-Math.floor(n/3)*55,10);Object.assign(c,{truck:false,length:4.7,desired:29,courtesy:1,cooldown:Infinity,decision:Infinity,headway:1.8,acceleration:1.3});cars.push(c);
+ }
+ for(let n=0;n<2600;n++){
+  const before=new Map(s.cars.map(c=>[c.id,c.x]));s.step(.1);
+  for(const c of s.cars){assert(c.v>5,'an open gantry stopped a moving vehicle');assert(c.x>=before.get(c.id));assert(s.obstacle(c,c.lane).gap>=1.99);}
+ }
+ assert(cars.every(c=>c.x>GANTRIES[5]),'platoon failed to pass the higher-limit section');
+});

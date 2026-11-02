@@ -50,7 +50,7 @@ canvas{height:1160px}.road-sign-target.gantry-side{font-size:9px}#inlineSignals{
 class NetworkSystems {
  constructor(sim,{length,gantries}){
   this.sim=sim;this.length=length;this.gantries=gantries;
-  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,offStart:x-1150,offLength:350,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0}));
+  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,offStart:x-1150,offLength:450,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0}));
   this.phases=[{name:'Normal demand',multiplier:1,duration:90},{name:'Morning rush',multiplier:1.8,duration:180},{name:'Demand easing',multiplier:.75,duration:100},{name:'Stadium traffic',multiplier:2.2,duration:160},{name:'Normal demand',multiplier:1,duration:150}];
   this.phaseIndex=0;this.phase={...this.phases[0],endsAt:90};
   this.work={x:4200,length:150,lanes:[0],announceAt:45,startsAt:150,status:'scheduled',remaining:180,sceneId:null};
@@ -152,7 +152,7 @@ class NetworkSystems {
  // At speed, the existing moving-gap matching retains mainline priority.
  updateZipper(){
   const s=this.sim,traffic=this.rampTraffic();
-  for(const c of s.cars)delete c.zipperStop;
+  for(const c of s.cars){delete c.zipperYieldTarget;delete c.zipperYieldEntry;}
   for(const r of this.ramps){
    const c=r.queue[0],entry=r.x-r.mergeLength;
    if(r.zipperMain!=null){const main=s.cars.find(c=>c.id===r.zipperMain);if(!main||main.x>=entry){r.zipperTurn='ramp';r.zipperMain=null;}}
@@ -160,8 +160,14 @@ class NetworkSystems {
    const rear=traffic.filter(c=>c.x<entry&&c.onRamp==null).sort((a,b)=>b.x-a.x)[0];
    if(!rear||rear.emergency||rear.v>12||c.v>12)continue;
    if(r.zipperTurn==='main'){r.zipperMain??=rear.id;continue;}
-   const stop=entry-c.length-12;
-   if(rear.x<stop){rear.zipperStop=stop;r.zipperRear=rear.id;}
+   // Open a rolling gap by easing one rear driver, never by adding a
+   // stationary virtual stop line to an otherwise open motorway.
+   if(rear.x<entry-c.length-4){
+    const base=r.zipperRear===rear.id?r.zipperBaseSpeed:rear.v;
+    r.zipperRear=rear.id;r.zipperBaseSpeed=base;
+    rear.zipperYieldTarget=Math.max(.5,base-Math.min(2,base*.25));
+    rear.zipperYieldEntry=entry;
+   }
   }
  }
  updateOffRamps(){
@@ -402,7 +408,6 @@ class Simulation {
     for (let g = 0; g < GANTRIES.length; g++) if (lane>=0 && this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
       pos = Math.max(car.x, GANTRIES[g] - 8); speed = 0;
     }
-    if(car.zipperStop!=null&&car.x<car.zipperStop&&car.zipperStop<pos){pos=car.zipperStop;speed=0;}
     if(car.blocker&&this.systemsEnabled&&['rolling','clearing'].includes(this.systems.roadblock.status)){const hold=this.systems.roadblock.x-this.systems.roadblock.length-100;if(car.x<hold&&hold<pos){pos=hold;speed=0;}}
     return { gap: Math.max(.1, pos - car.x), speed };
   }
@@ -633,7 +638,7 @@ class Simulation {
       const transitionPlan=transitionIndex>=0&&transitionGoal!=null&&c.x<GANTRIES[transitionIndex]&&c.x>=GANTRIES[transitionIndex]-35&&this.signals[transitionIndex][transitionGoal].mode==='open';
       if(!transitionPlan)c.transitionGantry=null;
       const mandatory=currentClosed||hazard,forced=mandatory||upcoming>=0||advisory||transitionPlan;
-      const rampCourtesy=!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity);
+      const rampCourtesy=!c.emergency&&c.lane===0&&(c.zipperYieldEntry!=null||c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity));
       const approachingSiren=!c.emergency&&sirens.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<600);
       let destinations=[];
       if(transitionPlan){
@@ -699,7 +704,7 @@ class Simulation {
           const candidates=evacuationSteps;
           target = candidates.find(safe) ?? c.lane;
         } else {
-          if(rampCourtesy&&c.cooldown<=0&&safe(c.lane+1)){target=c.lane+1;c.rampClearUntilX=c.rampYieldEntry+80;}
+          if(rampCourtesy&&c.cooldown<=0&&safe(c.lane+1)){target=c.lane+1;c.rampClearUntilX=(c.zipperYieldEntry??c.rampYieldEntry)+80;}
           // Return left unless actively passing a slower vehicle there.
           const left = c.lane - 1;
           if (target===c.lane && !c.emergency && left >= 0 && !(c.x<(c.rampClearUntilX??-Infinity)) && safe(left)) {
@@ -767,6 +772,7 @@ class Simulation {
       const limit = this.speedTarget(c);
       let desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
       if(!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity))desired=Math.min(desired,Math.max(4,c.rampYieldTargetSpeed??desired));
+      if(!c.emergency&&c.zipperYieldTarget!=null)desired=Math.min(desired,c.zipperYieldTarget);
       const yielding=yieldRequests.has(c.id);
       c.yieldingFor=yielding?yieldRequests.get(c.id):null;
       if(yielding&&!c.emergency)desired=Math.min(desired,Math.max(4,c.v-1.2));
@@ -778,7 +784,7 @@ class Simulation {
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
       let acceleration = c.acceleration * (1 - (c.v / desired) ** 4 - (wanted / front.gap) ** 2);
       // Each stopped driver waits their own reaction time as the queue releases.
-      if (c.v < .4 && (front.gap < 8 || front.speed < .5 && front.gap < 20)) c.restart = c.reaction;
+      if (c.v < .4 && front.speed < .3 && front.gap < 5.5) c.restart = c.reaction;
       else c.restart = Math.max(0, c.restart - dt);
       if (c.restart > 0 && c.v < .4) acceleration = Math.min(0, acceleration);
       const targetA = clamp(acceleration, -6, c.acceleration);
@@ -832,31 +838,14 @@ function createRoadGeometry(width,height,length,viewLength=length,viewStart=0){
  return {width,height,roadWidth,laneWidth,leftAt,center,centerAtY,project,unproject,scale,scaleAt,laneX,angleAt};
 }
 
-// Keep the full physical approach, but turn its outer feeder in from the
-// map edge. Only the feeder is schematic; the main road projection is fixed.
+// Long, shallow slip-road tapers share the motorway world projection.
+// The outside approach remains parallel to the motorway, with no right-angle
+// feeder. Geometry never depends on traffic or a queue length.
 function slipRoadPoint(geometry,ramp,worldX){
- const mergeLength=ramp.mergeLength??600,d=Math.max(0,ramp.x-worldX),outside=geometry.laneWidth+4;
- if(d<=mergeLength){
-  const t=d/mergeLength,shown=ramp.x-d*.7;
-  const smooth=t*t*t*(10+t*(-15+6*t)),slope=30*t*t*(1-t)*(1-t);
-  const centerSlope=(geometry.center(shown+1)-geometry.center(shown-1))/2;
-  return {x:geometry.laneX(shown,0)-outside*smooth,y:geometry.project(shown),angle:Math.atan2(centerSlope*.7+outside*slope/mergeLength,geometry.scale*.7)};
- }
- const shown=ramp.x-mergeLength*.7,base={x:geometry.laneX(shown,0)-outside,y:geometry.project(shown)},angle=geometry.angleAt(shown);
- return feederCurve(geometry,base,angle,d-mergeLength,250,false);
-}
-// A circular bend followed by an open feeder keeps a bounded bend radius.
-// Local rotations match the carriageway tangent at every branch connection.
-function feederCurve(geometry,base,angle,d,turnLength,exit){
- const radius=geometry.laneWidth*.45,t=Math.min(1,Math.max(0,d/turnLength));
- const turn=(exit?-Math.PI/2:Math.PI/2)-angle,phi=angle+turn*t;
- const extra=Math.max(0,d-turnLength),m=radius*Math.abs(turn)/turnLength;
- const extension=m*extra+geometry.width*(extra/250)**2;
- const x=base.x+radius*(Math.cos(phi)-Math.cos(angle))-extension;
- const y=base.y+radius*(Math.sin(phi)-Math.sin(angle));
- const dx=extra>0?-m-2*geometry.width*extra/62500:-radius*Math.sin(phi)*turn/turnLength;
- const dy=extra>0?0:radius*Math.cos(phi)*turn/turnLength;
- return {x,y,angle:Math.atan2(exit?dx:-dx,exit?-dy:dy)};
+ const length=ramp.approachLength??1100,d=Math.max(0,ramp.x-worldX),t=Math.min(1,d/length);
+ const outside=geometry.laneWidth*1.8+8,smooth=t*t*(3-2*t);
+ const slope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2+outside*6*t*(1-t)/length;
+ return {x:geometry.laneX(worldX,0)-outside*smooth,y:geometry.project(worldX),angle:Math.atan2(slope,geometry.scale)};
 }
 function rampEdges(geometry,p){
  const half=geometry.laneWidth*.4/2,dx=half*Math.cos(p.angle),dy=half*Math.sin(p.angle);
@@ -885,10 +874,14 @@ function roadworkCones(geometry,work){
  return result;
 }
 
-// Leave before the incoming feeder, following a long curve out of the map.
+// The exit diverges gradually before the joining taper, then fades into the
+// local road network. It never turns into a horizontal cross-road.
 function offRampPoint(geometry,ramp,worldX){
- const start=ramp.offStart??ramp.x-1150,length=ramp.offLength??350;
- return feederCurve(geometry,{x:geometry.laneX(start,0),y:geometry.project(start)},geometry.angleAt(start),Math.max(0,worldX-start),length/2,true);
+ const start=ramp.offStart??ramp.x-1150,length=ramp.offLength??450;
+ const t=Math.max(0,Math.min(1,(worldX-start)/length)),outside=geometry.laneWidth*.7+4;
+ const smooth=t*t*(3-2*t);
+ const slope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2-outside*6*t*(1-t)/length;
+ return {x:geometry.laneX(worldX,0)-outside*smooth,y:geometry.project(worldX),angle:Math.atan2(slope,geometry.scale)};
 }
 
 // Every icon stays on its actual lane centre (or the shared slip-road curve).
@@ -1067,11 +1060,12 @@ function paintScenery(ctx,geo){
   if(points.every(p=>p.y<-100)||points.every(p=>p.y>h+100))continue;
   branches.push({r,exit,points});
  }
+ const branchInk=(points,exit,color)=>{const g=ctx.createLinearGradient(0,points[0].y,0,points.at(-1).y);if(exit){g.addColorStop(0,color);g.addColorStop(.65,color);g.addColorStop(1,color+'00');}else{g.addColorStop(0,color+'00');g.addColorStop(.2,color);g.addColorStop(1,color);}return g;};
  const edgePath=(points,key)=>{ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p[key].x,p[key].y):ctx.moveTo(p[key].x,p[key].y));};
- for(const {points} of branches){
+ for(const {points,exit} of branches){
   ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.outer.x,p.outer.y):ctx.moveTo(p.outer.x,p.outer.y));
   for(let i=points.length-1;i>=0;i--)ctx.lineTo(points[i].inner.x,points[i].inner.y);
-  ctx.closePath();ctx.fillStyle='#35464a';ctx.fill();
+  ctx.closePath();ctx.fillStyle=branchInk(points,exit,'#35464a');ctx.fill();
  }
  // Open the carriageway edge only where a branch actually meets it.
  const openings=branches.map(b=>b.points.filter(p=>p.connected)).filter(p=>p.length).map(points=>({low:Math.min(...points.map(p=>p.inner.y)),high:Math.max(...points.map(p=>p.inner.y))}));
@@ -1079,6 +1073,7 @@ function paintScenery(ctx,geo){
  for(let py=-80;py<h+80;py+=2){if(openings.some(o=>py>=o.low-2&&py<=o.high+2))continue;ctx.moveTo(geo.centerAtY(py)-roadW/2,py);ctx.lineTo(geo.centerAtY(py+2)-roadW/2,py+2);}
  ctx.stroke();
  for(const {points,exit} of branches){
+  ctx.strokeStyle=branchInk(points,exit,'#a2b3a2');
   const outside=points.filter(p=>p.outer.x<geo.leftAt(geo.unproject(p.outer.y)));if(outside.length){edgePath(outside,'outer');ctx.stroke();}
   const separate=points.filter(p=>!p.connected);if(separate.length){edgePath(separate,'inner');ctx.stroke();}
   // Short broken edge lines guide traffic through the open mouth.
@@ -1153,7 +1148,6 @@ GANTRIES.forEach((g,gi)=>{const gy=y(g),left=geo.leftAt(g);if(gy<20||gy>h-20)ret
  ctx.fillStyle='#e1c4a3';ctx.font='7px sans-serif';ctx.fillText(c.status==='recovering'?'LOADING':c.status==='recovery-en-route'?'TOW COMING':c.status==='awaiting-recovery'?'TOW CALLED':c.status==='workers-withdrawn'?'WORK PAUSED':'CREWS HERE',labelX,labelY+24);
 }
 for(const c of incidentMarkers){ctx.strokeStyle='#ffab85';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(c.cx,c.cy+3,7,0,Math.PI*2);ctx.stroke();}
-if(VIEW_LENGTH===LENGTH){ctx.textAlign='center';ctx.fillStyle='#b8d99e';ctx.font='bold 9px sans-serif';ctx.fillText('↑ FREE EXIT',geo.center(LENGTH-250),14);}
 ctx.textAlign='center';ctx.fillStyle='#93b29e';ctx.font='9px sans-serif';ctx.fillText('↑     ↑     ↑',w/2,h-18)}
 function updateDashboard(){
  updateInlineReading();updateResponseStatus();

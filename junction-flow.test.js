@@ -83,11 +83,11 @@ test('J2 slow traffic reserves a ramp turn then gives the mainline a turn, with 
   if(closed)for(const row of s.signals)row[0].mode='closed';
   const c=arrival(s,r,0,0),rear=s.spawn(0,entry-65,5);
   Object.assign(rear,{truck:false,length:4.7,cooldown:Infinity,decision:Infinity});
-  o.updateZipper();assert.equal(rear.zipperStop,entry-c.length-12);
+  o.updateZipper();assert.equal(rear.zipperStop,undefined);assert(rear.zipperYieldTarget>0&&rear.zipperYieldTarget<rear.v);assert(s.obstacle(rear,0).gap>1000);
   // A genuine stopped rear gap is required; turn-taking never bypasses safety.
   rear.x=entry-c.length-14;rear.v=0;o.releaseRamps();
   assert(s.cars.includes(c));assert.equal(r.zipperTurn,'main');
-  const next=arrival(s,r,0,0);o.updateZipper();assert.equal(rear.zipperStop,undefined);
+  const next=arrival(s,r,0,0);o.updateZipper();assert.equal(rear.zipperYieldTarget,undefined);
   assert.equal(r.zipperMain,rear.id);
   rear.x=entry+1;o.updateZipper();assert.equal(r.zipperTurn,'ramp');
   for(let n=0;n<1800&&s.cars.includes(c)&&c.x<r.x+100;n++){s.step(.1);safe(s);}
