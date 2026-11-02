@@ -138,7 +138,16 @@ export class NetworkSystems {
  prepareRampMerges(dt){
   const s=this.sim,traffic=this.rampTraffic();
   for(const c of s.cars){
-   if(c.onRamp==null||c.rampMerging)continue;
+   if(c.onRamp==null)continue;
+   if(c.rampMerging){
+    const duration=c.rampSteerDuration??(c.truck?5.5:4.5);
+    c.rampSteerProgress=Math.min(1,(c.rampSteerProgress??0)+dt/duration);
+    if(c.rampSteerProgress>=1){
+     c.onRamp=null;c.slipRamp=null;c.rampMerging=false;c.decision=0;
+    }else{c.cooldown=Math.max(0,c.cooldown-dt);c.decision=Math.max(0,c.decision-dt);}
+    continue;
+   }
+   c.cooldown=Math.max(0,c.cooldown-dt);c.decision=Math.max(0,c.decision-dt);
    const r=this.ramps[c.onRamp],point=r.x-r.joinTaper,distance=Math.max(0,point-c.x);
    const cruise=Math.min(c.desired,this.rampCruise(r)),plans=[];
    for(const reduction of [0,1,2,3,5,7,10,14,18]){
@@ -151,7 +160,7 @@ export class NetworkSystems {
    c.accelGap=retained&&retained.target>=(plans[0]?.target??0)-2?retained:plans[0];
    c.accelTarget=c.accelGap?.target??Math.min(cruise,Math.sqrt(2*1.5*distance));
    if(c.x>=r.x-r.mergeLength&&r.mode==='open'&&this.rampGap(r,{car:c,point:c.x,v:c.v,traffic})){
-    c.rampMerging=true;c.rampMergeStart=c.x;c.mergeHeadwayStart=c.x;c.mergeRequest=null;r.zipperTurn='main';r.zipperMain=null;traffic.push(c);
+    c.rampMerging=true;c.rampSteerProgress=0;c.rampSteerDuration=c.truck?5.5:4.5;c.rampMergeStart=c.x;c.mergeHeadwayStart=c.x;c.mergeRequest=null;r.zipperTurn='main';r.zipperMain=null;traffic.push(c);
    }
   }
  }

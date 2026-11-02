@@ -23,8 +23,11 @@ export function slipRoadPoint(geometry,ramp,worldX,vehicle){
  const smooth=t=>t*t*(3-2*t),slope=t=>6*t*(1-t);
  let offset,rate;
  if(vehicle?.rampMerging&&vehicle.rampMergeStart!=null){
-  const distance=Math.max(1,ramp.x-vehicle.rampMergeStart),t=Math.max(0,Math.min(1,(worldX-vehicle.rampMergeStart)/distance));
-  offset=parallel*(1-smooth(t));rate=parallel*slope(t)/distance;
+  const distance=Math.max(1,ramp.x-vehicle.rampMergeStart),t=Math.max(0,Math.min(1,vehicle.rampSteerProgress??(worldX-vehicle.rampMergeStart)/distance));
+  offset=parallel*(1-smooth(t));
+  const lateralSpeed=parallel*slope(t)/(vehicle.rampSteerDuration??(vehicle.truck?5.5:4.5));
+  const yaw=Math.min(.3,Math.atan2(lateralSpeed,Math.max(2,(vehicle.v??0)*geometry.scale)));
+  return {x:geometry.laneX(worldX,0)-offset,y:geometry.project(worldX),angle:geometry.angleAt(worldX)+yaw};
  }
  else if(d<taper){const t=d/taper;offset=parallel*smooth(t);rate=parallel*slope(t)/taper;}
  else if(d<=acceleration){offset=parallel;rate=0;}

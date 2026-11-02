@@ -10,14 +10,17 @@ const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 function offLaneClear(c){return c.offRamp!=null&&(c.offProgress??0)>=.65;}
 // Parallel acceleration/deceleration lanes are separate traffic corridors.
 function vehicleLanes(c){
- if(c.onRamp!=null)return c.rampMerging?[0,10+c.onRamp]:[10+c.onRamp];
+ if(c.onRamp!=null){
+  if(!c.rampMerging)return [10+c.onRamp];
+  return (c.rampSteerProgress??0)>=(c.truck?.9:.8)?[0]:[0,10+c.onRamp];
+ }
  if(offLaneClear(c))return [20+c.offRamp];
  return Math.abs(c.visualLane-c.lane)>.2&&c.fromLane!==c.lane?[c.lane,c.fromLane]:[c.lane];
 }
 // Snapshot only fields used by neighbour queries. Driver state stays on the live
 // vehicle; every following calculation still reads the same frozen time step.
 function trafficSnapshot(cars){
-  return cars.map(c=>({id:c.id,lane:c.lane,fromLane:c.fromLane,visualLane:c.visualLane,x:c.x,v:c.v,length:c.length,emergency:c.emergency,onRamp:c.onRamp,rampMerging:c.rampMerging,offRamp:c.offRamp,offProgress:c.offProgress}));
+  return cars.map(c=>({id:c.id,lane:c.lane,fromLane:c.fromLane,visualLane:c.visualLane,x:c.x,v:c.v,length:c.length,emergency:c.emergency,onRamp:c.onRamp,rampMerging:c.rampMerging,rampSteerProgress:c.rampSteerProgress,truck:c.truck,offRamp:c.offRamp,offProgress:c.offProgress}));
 }
 function trafficIndex(traffic){
   const lanes=new Map();

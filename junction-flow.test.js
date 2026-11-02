@@ -166,3 +166,25 @@ test('an exiting vehicle still overlapping motorway traffic keeps collision sepa
  for(let n=0;n<100;n++){s.step(.1);safe(s);assert(c.x<=block.x-block.length-1.99);}
  assert(s.occupiedLanes(c).includes(0),'exit vehicle released the running lane before body clearance');
 });
+test('J1 joining traffic can finish merging and pass a stopped lane-1 leader through the free adjacent lane',()=>{
+ const s=setup(),r=s.systems.ramps[0],entry=r.x-r.mergeLength,c=arrival(s,r,0,20);
+ const front=s.spawn(0,entry+150,20);Object.assign(front,{truck:false,length:4.7,desired:20,v:20,courtesy:1,cooldown:Infinity,decision:Infinity});
+ for(let n=0;n<40;n++)s.step(.1);
+ assert(c.rampMerging,'test did not establish a junction merge');
+ front.recovering=999;front.v=0;const blockedAt=front.x;let passed=false;
+ for(let n=0;n<400;n++){
+  const before=new Map(s.cars.map(c=>[c.id,c.x]));s.step(.1);safe(s,before);
+  if(c.x>blockedAt+20){passed=true;break;}
+ }
+ assert(passed,'joined vehicle remained trapped in junction mode');assert.equal(c.onRamp,null);assert.equal(c.slipRamp,null);assert.equal(front.x,blockedAt);
+});
+test('a stopped committed merger releases the acceleration lane after its body steers clear',()=>{
+ for(const truck of [false,true]){
+  const s=setup(),r=s.systems.ramps[0],c=s.spawn(0,900,0),front=s.spawn(0,910,0);
+  Object.assign(c,{truck,length:truck?16.5:4.7,onRamp:r.id,slipRamp:r.id,rampMerging:true,rampMergeStart:600,rampSteerProgress:0,rampSteerDuration:truck?5.5:4.5,cooldown:Infinity});
+  Object.assign(front,{truck:false,length:4.7,recovering:999,v:0});for(const row of s.signals){row[1].mode=row[2].mode='closed';}
+  for(let n=0;n<60;n++){s.step(.1);safe(s);}
+  assert(c.x<r.x,'test vehicle did not remain upstream of the old handoff point');assert.equal(c.onRamp,null);assert.equal(c.rampSteerProgress,1);
+  const follower=s.spawn(0,860,0);Object.assign(follower,{onRamp:r.id,rampMerging:false});assert.equal(s.obstacle(follower,10+r.id).gap,Infinity,'completed merger still reserves the acceleration lane');
+ }
+});

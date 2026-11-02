@@ -186,7 +186,16 @@ class NetworkSystems {
  prepareRampMerges(dt){
   const s=this.sim,traffic=this.rampTraffic();
   for(const c of s.cars){
-   if(c.onRamp==null||c.rampMerging)continue;
+   if(c.onRamp==null)continue;
+   if(c.rampMerging){
+    const duration=c.rampSteerDuration??(c.truck?5.5:4.5);
+    c.rampSteerProgress=Math.min(1,(c.rampSteerProgress??0)+dt/duration);
+    if(c.rampSteerProgress>=1){
+     c.onRamp=null;c.slipRamp=null;c.rampMerging=false;c.decision=0;
+    }else{c.cooldown=Math.max(0,c.cooldown-dt);c.decision=Math.max(0,c.decision-dt);}
+    continue;
+   }
+   c.cooldown=Math.max(0,c.cooldown-dt);c.decision=Math.max(0,c.decision-dt);
    const r=this.ramps[c.onRamp],point=r.x-r.joinTaper,distance=Math.max(0,point-c.x);
    const cruise=Math.min(c.desired,this.rampCruise(r)),plans=[];
    for(const reduction of [0,1,2,3,5,7,10,14,18]){
@@ -199,7 +208,7 @@ class NetworkSystems {
    c.accelGap=retained&&retained.target>=(plans[0]?.target??0)-2?retained:plans[0];
    c.accelTarget=c.accelGap?.target??Math.min(cruise,Math.sqrt(2*1.5*distance));
    if(c.x>=r.x-r.mergeLength&&r.mode==='open'&&this.rampGap(r,{car:c,point:c.x,v:c.v,traffic})){
-    c.rampMerging=true;c.rampMergeStart=c.x;c.mergeHeadwayStart=c.x;c.mergeRequest=null;r.zipperTurn='main';r.zipperMain=null;traffic.push(c);
+    c.rampMerging=true;c.rampSteerProgress=0;c.rampSteerDuration=c.truck?5.5:4.5;c.rampMergeStart=c.x;c.mergeHeadwayStart=c.x;c.mergeRequest=null;r.zipperTurn='main';r.zipperMain=null;traffic.push(c);
    }
   }
  }
@@ -325,14 +334,17 @@ const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 function offLaneClear(c){return c.offRamp!=null&&(c.offProgress??0)>=.65;}
 // Parallel acceleration/deceleration lanes are separate traffic corridors.
 function vehicleLanes(c){
- if(c.onRamp!=null)return c.rampMerging?[0,10+c.onRamp]:[10+c.onRamp];
+ if(c.onRamp!=null){
+  if(!c.rampMerging)return [10+c.onRamp];
+  return (c.rampSteerProgress??0)>=(c.truck?.9:.8)?[0]:[0,10+c.onRamp];
+ }
  if(offLaneClear(c))return [20+c.offRamp];
  return Math.abs(c.visualLane-c.lane)>.2&&c.fromLane!==c.lane?[c.lane,c.fromLane]:[c.lane];
 }
 // Snapshot only fields used by neighbour queries. Driver state stays on the live
 // vehicle; every following calculation still reads the same frozen time step.
 function trafficSnapshot(cars){
-  return cars.map(c=>({id:c.id,lane:c.lane,fromLane:c.fromLane,visualLane:c.visualLane,x:c.x,v:c.v,length:c.length,emergency:c.emergency,onRamp:c.onRamp,rampMerging:c.rampMerging,offRamp:c.offRamp,offProgress:c.offProgress}));
+  return cars.map(c=>({id:c.id,lane:c.lane,fromLane:c.fromLane,visualLane:c.visualLane,x:c.x,v:c.v,length:c.length,emergency:c.emergency,onRamp:c.onRamp,rampMerging:c.rampMerging,rampSteerProgress:c.rampSteerProgress,truck:c.truck,offRamp:c.offRamp,offProgress:c.offProgress}));
 }
 function trafficIndex(traffic){
   const lanes=new Map();
@@ -919,8 +931,11 @@ function slipRoadPoint(geometry,ramp,worldX,vehicle){
  const smooth=t=>t*t*(3-2*t),slope=t=>6*t*(1-t);
  let offset,rate;
  if(vehicle?.rampMerging&&vehicle.rampMergeStart!=null){
-  const distance=Math.max(1,ramp.x-vehicle.rampMergeStart),t=Math.max(0,Math.min(1,(worldX-vehicle.rampMergeStart)/distance));
-  offset=parallel*(1-smooth(t));rate=parallel*slope(t)/distance;
+  const distance=Math.max(1,ramp.x-vehicle.rampMergeStart),t=Math.max(0,Math.min(1,vehicle.rampSteerProgress??(worldX-vehicle.rampMergeStart)/distance));
+  offset=parallel*(1-smooth(t));
+  const lateralSpeed=parallel*slope(t)/(vehicle.rampSteerDuration??(vehicle.truck?5.5:4.5));
+  const yaw=Math.min(.3,Math.atan2(lateralSpeed,Math.max(2,(vehicle.v??0)*geometry.scale)));
+  return {x:geometry.laneX(worldX,0)-offset,y:geometry.project(worldX),angle:geometry.angleAt(worldX)+yaw};
  }
  else if(d<taper){const t=d/taper;offset=parallel*smooth(t);rate=parallel*slope(t)/taper;}
  else if(d<=acceleration){offset=parallel;rate=0;}

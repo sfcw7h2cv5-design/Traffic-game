@@ -164,7 +164,7 @@ test('all-lane closures hold the slip road until an onward motorway lane reopens
  }
 });
 
-test('the extended slip-road join reserves its full corridor and progress follows physical distance',()=>{
+test('an acceleration-lane handoff finishes with steering rather than waiting for the lane endpoint',()=>{
  const s=setup(),r=s.systems.ramps[0],c=queuedCar(s,r),length=c.length,entry=r.x-r.mergeLength;
  assert.equal(r.mergeLength,600);assert.equal(r.approachLength,1100);
  run(s,.1);assert(s.cars.includes(c));assert.equal(c.onRamp,r.id);assert(c.x>=entry&&c.x-entry<4);
@@ -172,7 +172,7 @@ test('the extended slip-road join reserves its full corridor and progress follow
  for(let n=0;n<1000;n++){
   s.step(.1);assert(c.x>=before);assert(c.x-before<4);assert.equal(c.length,length);
   if(c.onRamp!=null){assert(c.x<r.x+4);assert(Math.abs(c.rampProgress-(before-entry)/r.mergeLength)<1e-9);}
-  else{assert(c.x>=r.x);joined=true;break;}
+  else{assert(c.rampSteerProgress>=1);assert(c.x<r.x);assert(!s.occupiedLanes(c).includes(10+r.id));joined=true;break;}
   before=c.x;
  }
  assert(joined);

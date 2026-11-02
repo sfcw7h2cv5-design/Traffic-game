@@ -117,3 +117,12 @@ test('acceleration and deceleration sections run parallel beside the motorway',(
   assert(Math.abs(on[0]-on[1])<1e-7);assert(Math.abs(off[0]-off[1])<1e-7);assert(on[0]<0&&off[0]<0);
  }
 });
+test('junction steering can finish smoothly while longitudinal position is held in a queue',()=>{
+ const g=createRoadGeometry(390,1200,LENGTH),r=new Simulation(()=>.5).systems.ramps[0],x=900;
+ let before=-Infinity;
+ for(const t of [0,.25,.5,.75,1]){
+  const p=slipRoadPoint(g,r,x,{rampMerging:true,rampMergeStart:600,rampSteerProgress:t,rampSteerDuration:4.5,v:0});
+  assert(p.x>=before);assert.equal(p.y,g.project(x));assert(Math.abs(p.angle-g.angleAt(x))<=.3000001);before=p.x;
+ }
+ assert.equal(before,g.laneX(x,0));
+});
