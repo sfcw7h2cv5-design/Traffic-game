@@ -145,3 +145,24 @@ test('open J2 keeps moving while G05 and G06 close the middle motorway lane',()=
  }
  assert(merged.size>=15,'junction failed to merge its demand');
 });
+test('an exit vehicle already clear of lane 1 passes a closed-lane queue and is counted once',()=>{
+ for(const id of [1,2])for(const allClosed of [false,true]){
+  const s=setup(),o=s.systems,r=o.ramps[id],x=r.offStart+r.offDeparture*.7;
+  const c=s.spawn(0,x,0),block=s.spawn(0,x+10,0);
+  Object.assign(c,{offRamp:id,offProgress:.7,truck:false,length:4.7,desired:25,v:0});
+  Object.assign(block,{truck:false,length:4.7,v:0,recovering:999});
+  for(const row of s.signals)for(const lane of allClosed?[0,1,2]:[0])row[lane].mode='closed';
+  let before=c.x;
+  for(let n=0;n<900&&s.cars.includes(c);n++){s.step(.1);assert(c.x>=before);assert(c.x-before<4);before=c.x;safe(s);}
+  assert(!s.cars.includes(c),'exit car remained frozen beside the closed lane');assert(c.x>r.offStart+r.offLength);
+  assert.equal(block.x,x+10,'fix moved the blocked motorway vehicle');assert.equal(o.totalExited,1);assert.equal(s.exits.length,1);
+ }
+});
+test('an exiting vehicle still overlapping motorway traffic keeps collision separation',()=>{
+ const s=setup(),r=s.systems.ramps[1],x=r.offStart+r.offDeparture*.4;
+ const c=s.spawn(0,x,0),block=s.spawn(0,x+10,0);
+ Object.assign(c,{offRamp:r.id,offProgress:.4,truck:false,length:4.7,v:0});
+ Object.assign(block,{truck:false,length:4.7,v:0,recovering:999});
+ for(let n=0;n<100;n++){s.step(.1);safe(s);assert(c.x<=block.x-block.length-1.99);}
+ assert(s.occupiedLanes(c).includes(0),'exit vehicle released the running lane before body clearance');
+});

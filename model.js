@@ -5,10 +5,13 @@ export const EXIT_CLEAR_START = LENGTH - 500;
 export const GANTRIES = [450, 1550, 2650, 3750, 4850, 6450, 8050];
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
+// Body clearance occurs before the departure curve is fully complete. Waiting
+// for 100% progress can strand an exit car behind a motorway queue it has cleared.
+function offLaneClear(c){return c.offRamp!=null&&(c.offProgress??0)>=.65;}
 // Parallel acceleration/deceleration lanes are separate traffic corridors.
 function vehicleLanes(c){
  if(c.onRamp!=null)return c.rampMerging?[0,10+c.onRamp]:[10+c.onRamp];
- if(c.offRamp!=null&&c.offProgress>=1)return [20+c.offRamp];
+ if(offLaneClear(c))return [20+c.offRamp];
  return Math.abs(c.visualLane-c.lane)>.2&&c.fromLane!==c.lane?[c.lane,c.fromLane]:[c.lane];
 }
 // Snapshot only fields used by neighbour queries. Driver state stays on the live
@@ -91,7 +94,7 @@ export class Simulation {
     return i < 0 ? { speed: 70, mode: 'open' } : this.signals[i][lane];
   }
   speedTarget(car) {
-    if(car.emergency)return car.desired;
+    if(car.emergency||offLaneClear(car))return car.desired;
     // A lower limit affects its whole downstream section. Drivers also see
     // approaching signs and brake comfortably before passing the gantry.
     let target = this.signalAt(car.x, car.lane).speed * .44704;
@@ -119,7 +122,7 @@ export class Simulation {
     for (const i of this.incidentBodies()) if (i.lane === lane && i.x >= car.x && i.x - i.length < pos) {
       pos = i.x - i.length; speed = 0;
     }
-    for (let g = 0; g < GANTRIES.length; g++) if (lane>=0 && lane<3 && this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
+    for (let g = 0; g < GANTRIES.length; g++) if (car.offRamp==null && lane>=0 && lane<3 && this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
       pos = Math.max(car.x, GANTRIES[g] - 8); speed = 0;
     }
     if(car.blocker&&this.systemsEnabled&&['rolling','clearing'].includes(this.systems.roadblock.status)){const hold=this.systems.roadblock.x-this.systems.roadblock.length-100;if(car.x<hold&&hold<pos){pos=hold;speed=0;}}
@@ -497,7 +500,7 @@ export class Simulation {
         const remaining=berth?Math.max(0,berth.x-25-c.x):Infinity;
         c.x+=Math.min(remaining,Math.max(0,front.gap-2),c.v*dt);continue;
       }
-      const drivingLane=c.onRamp!=null&&!c.rampMerging?10+c.onRamp:c.offRamp!=null&&c.offProgress>=1?20+c.offRamp:c.lane;
+      const drivingLane=c.onRamp!=null&&!c.rampMerging?10+c.onRamp:offLaneClear(c)?20+c.offRamp:c.lane;
       let front=this.obstacle(c,drivingLane,movementSnapshot);
       if(c.onRamp!=null&&!c.rampMerging){
        const r=this.systems.ramps[c.onRamp],end=r.x-r.joinTaper;
@@ -515,7 +518,7 @@ export class Simulation {
       if(!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity))desired=Math.min(desired,Math.max(4,c.rampYieldTargetSpeed??desired));
       if(!c.emergency&&c.zipperYieldTarget!=null)desired=Math.min(desired,c.zipperYieldTarget);
       if(c.onRamp!=null&&!c.rampMerging)desired=Math.min(desired,c.accelTarget??desired);
-      if(c.offRamp!=null&&c.offProgress>=1){
+      if(offLaneClear(c)){
        const r=this.systems.ramps[c.offRamp],remaining=Math.max(0,r.offStart+r.offLength-c.x);
        desired=Math.min(desired,Math.sqrt(12*12+2*1.5*remaining));
       }
