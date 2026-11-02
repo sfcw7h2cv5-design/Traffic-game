@@ -87,11 +87,12 @@ export class Simulation {
     // A lower limit affects its whole downstream section. Drivers also see
     // approaching signs and brake comfortably before passing the gantry.
     let target = this.signalAt(car.x, car.lane).speed * .44704;
-    const next = GANTRIES.findIndex(x => x > car.x);
-    if (next >= 0 && GANTRIES[next] - car.x < 400) {
-      const posted = this.signals[next][car.lane].speed * .44704;
-      const distance = Math.max(0, GANTRIES[next] - car.x - 15);
-      target = Math.min(target, Math.sqrt(posted * posted + 2 * 1.0 * distance));
+    // Use the braking envelope continuously, including before the old 400 m
+    // cutoff. A hard cutoff caused an abrupt target drop at low posted limits.
+    for(let g=0;g<GANTRIES.length;g++)if(GANTRIES[g]>car.x){
+      const posted=this.signals[g][car.lane].speed*.44704;
+      const distance=Math.max(0,GANTRIES[g]-car.x-15);
+      target=Math.min(target,Math.sqrt(posted*posted+2*distance));
     }
     return target;
   }
@@ -113,6 +114,7 @@ export class Simulation {
     for (let g = 0; g < GANTRIES.length; g++) if (lane>=0 && this.signals[g][lane].mode === 'closed' && car.x < GANTRIES[g] && GANTRIES[g] - 8 < pos) {
       pos = Math.max(car.x, GANTRIES[g] - 8); speed = 0;
     }
+    if(car.zipperStop!=null&&car.x<car.zipperStop&&car.zipperStop<pos){pos=car.zipperStop;speed=0;}
     if(car.blocker&&this.systemsEnabled&&['rolling','clearing'].includes(this.systems.roadblock.status)){const hold=this.systems.roadblock.x-this.systems.roadblock.length-100;if(car.x<hold&&hold<pos){pos=hold;speed=0;}}
     return { gap: Math.max(.1, pos - car.x), speed };
   }
@@ -330,7 +332,7 @@ export class Simulation {
     this._stepTrafficIndexes.set(snapshot,trafficIndex(snapshot));
     const sirens=snapshot.filter(c=>c.emergency);
     for (const c of this.cars) {
-      if(c.recovering!=null||c.lane<0||c.onRamp!=null||c.blocker)continue;
+      if(c.recovering!=null||c.lane<0||c.onRamp!=null||c.offRamp!=null||c.blocker)continue;
       c.cooldown -= dt; c.decision -= dt;
       const sig = this.signalAt(c.x, c.lane);
       let front = this.obstacle(c, c.lane, snapshot);

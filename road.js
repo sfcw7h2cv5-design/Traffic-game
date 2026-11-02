@@ -52,3 +52,11 @@ export function roadworkCones(geometry,work){
  for(let i=0;i<=ends;i++)add(point(work.x,low+(high+1-low)*i/ends),'end');
  return result;
 }
+
+// A diverging branch starts tangentially in lane 1 and eases outwards.
+export function offRampPoint(geometry,ramp,worldX){
+ const start=ramp.x+100,t=Math.max(0,Math.min(1,(worldX-start)/600));
+ const offset=(geometry.laneWidth+35)*t*t*(3-2*t);
+ const slope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2-(geometry.laneWidth+35)*6*t*(1-t)/600;
+ return {x:geometry.laneX(worldX,0)-offset,y:geometry.project(worldX),angle:Math.atan2(slope,geometry.scale)};
+}

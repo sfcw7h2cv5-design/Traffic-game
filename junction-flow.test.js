@@ -77,3 +77,36 @@ test('repeated rush-hour arrivals use moving gaps without building unnecessary s
   assert(stoppedSeconds<200,'junction queue did not clear: '+JSON.stringify({seed,stoppedSeconds}));
  }
 });
+test('J2 slow traffic reserves a ramp turn then gives the mainline a turn, with lane 1 open or closed',()=>{
+ for(const closed of [false,true]){
+  const s=setup(),o=s.systems,r=o.ramps[1],entry=r.x-r.mergeLength;
+  if(closed)for(const row of s.signals)row[0].mode='closed';
+  const c=arrival(s,r,0,0),rear=s.spawn(0,entry-65,5);
+  Object.assign(rear,{truck:false,length:4.7,cooldown:Infinity,decision:Infinity});
+  o.updateZipper();assert.equal(rear.zipperStop,entry-c.length-12);
+  // A genuine stopped rear gap is required; turn-taking never bypasses safety.
+  rear.x=entry-c.length-14;rear.v=0;o.releaseRamps();
+  assert(s.cars.includes(c));assert.equal(r.zipperTurn,'main');
+  const next=arrival(s,r,0,0);o.updateZipper();assert.equal(rear.zipperStop,undefined);
+  assert.equal(r.zipperMain,rear.id);
+  rear.x=entry+1;o.updateZipper();assert.equal(r.zipperTurn,'ramp');
+  for(let n=0;n<1800&&s.cars.includes(c)&&c.x<r.x+100;n++){s.step(.1);safe(s);}
+  assert(c.x>r.x,'joining vehicle stalled in taper');
+  if(closed)assert(c.lane>0,'joining vehicle did not evacuate closed lane 1');
+ }
+});
+test('speed anticipation is continuous across 400 m and respects the posted limit downstream',()=>{
+ const s=setup();s.signals[1][0].speed=20;
+ const a=s.speedTarget({x:1549-400,lane:0}),b=s.speedTarget({x:1551-400,lane:0});
+ assert(Math.abs(a-b)<.1,'braking target jumps at 400 m');
+ assert.equal(s.speedTarget({x:1550,lane:0}),20*.44704);
+});
+test('settled traffic follows an exit branch continuously and is counted once',()=>{
+ const s=setup(),o=s.systems,r=o.ramps[1];
+ while(s.id%7)s.id++;
+ const c=s.spawn(0,r.x+101,20);Object.assign(c,{truck:false,length:4.7,desired:25,cooldown:Infinity,decision:Infinity});
+ o.updateOffRamps();assert.equal(c.offRamp,r.id);let before=c.x;
+ for(let n=0;n<600&&s.cars.includes(c);n++){s.step(.1);assert(c.x>=before);assert(c.x-before<4);before=c.x;}
+ assert(!s.cars.includes(c));assert.equal(o.totalExited,1);assert.equal(s.exits.length,1);
+ o.updateOffRamps();assert.equal(o.totalExited,1);
+});

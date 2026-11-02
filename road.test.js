@@ -86,3 +86,11 @@ test('road shape, junctions and gantries stay fixed while traffic queues and cle
  sim.cars=[];sim.incidents=[];
  assert.deepEqual(coordinates(createRoadGeometry(...args)),before);
 });
+test('off ramps diverge smoothly from the fixed lane 1 centre',async()=>{
+ const {offRampPoint}=await import('./road.js');
+ const g=createRoadGeometry(420,1200,10000),r={x:5900};
+ const start=offRampPoint(g,r,6000),near=offRampPoint(g,r,6000.001),end=offRampPoint(g,r,6600);
+ assert.equal(start.x,g.laneX(6000,0));
+ assert(Math.abs(near.angle-start.angle)<.0001);
+ assert(end.x<g.leftAt(6600));assert.equal(end.y,g.project(6600));
+});

@@ -100,6 +100,33 @@ export class NetworkSystems {
   }
  }
 
+ // In slow traffic, reserve one checked gap, then let one mainline car pass.
+ // At speed, the existing moving-gap matching retains mainline priority.
+ updateZipper(){
+  const s=this.sim,traffic=this.rampTraffic();
+  for(const c of s.cars)delete c.zipperStop;
+  for(const r of this.ramps){
+   const c=r.queue[0],entry=r.x-r.mergeLength;
+   if(r.zipperMain!=null){const main=s.cars.find(c=>c.id===r.zipperMain);if(!main||main.x>=entry){r.zipperTurn='ramp';r.zipperMain=null;}}
+   if(!c||r.mode!=='open'||c.rampDistance-r.mergeLength>80)continue;
+   const rear=traffic.filter(c=>c.x<entry&&c.onRamp==null).sort((a,b)=>b.x-a.x)[0];
+   if(!rear||rear.emergency||rear.v>12||c.v>12)continue;
+   if(r.zipperTurn==='main'){r.zipperMain??=rear.id;continue;}
+   const stop=entry-c.length-12;
+   if(rear.x<stop){rear.zipperStop=stop;r.zipperRear=rear.id;}
+  }
+ }
+ updateOffRamps(){
+  const s=this.sim;
+  for(const c of s.cars){
+   if(c.offRamp!=null)continue;
+   if(c.lane!==0||c.onRamp!=null||c.emergency||c.kind||c.laneChange||c.id%7!==0)continue;
+   const r=this.ramps.find(r=>c.x>=r.x+100&&c.x<r.x+105&&r.mode==='open');
+   if(r)c.offRamp=r.id;
+  }
+  s.cars=s.cars.filter(c=>{if(c.offRamp==null||c.x<this.ramps[c.offRamp].x+700)return true;s.exits.push(s.elapsed);this.recordExit(c);return false;});
+ }
+
  updateRamps(dt){
   const s=this.sim;
   for(const r of this.ramps){
@@ -132,7 +159,7 @@ export class NetworkSystems {
    // Mainline traffic has advanced first and keeps priority. Commit the car
    // once, retaining its matched speed instead of integrating it twice.
    r.queue.shift();c.x=r.x-c.rampDistance;c.onRamp=r.id;c.rampProgress=0;c.cooldown=8;c.decision=2;s.cars.push(c);
-   r.releasing=true;r.lastRelease=s.elapsed;r.joined++;r.gapPlan=null;
+   r.zipperTurn='main';r.zipperMain=null;r.releasing=true;r.lastRelease=s.elapsed;r.joined++;r.gapPlan=null;
   }
  }
  protectionGantry(){return this.gantries.findLastIndex(g=>g<this.work.x-this.work.length-50);}
@@ -195,7 +222,7 @@ export class NetworkSystems {
  beforeStep(dt){
   const s=this.sim;
   if(s.elapsed>=this.phase.endsAt){this.phaseIndex=(this.phaseIndex+1)%this.phases.length;this.phase={...this.phases[this.phaseIndex],endsAt:s.elapsed+this.phases[this.phaseIndex].duration};this.announce(this.phase.name+' · entry and junction demand are changing.');}
-  this.updateRamps(dt);this.updateRampCourtesy();this.updateWorks(dt);this.updateRoadblock();
+  this.updateZipper();this.updateOffRamps();this.updateRamps(dt);this.updateRampCourtesy();this.updateWorks(dt);this.updateRoadblock();
  }
  recordExit(c){this.totalExited++;if(c.kind==='ambulance')this.ambulancesExited++;}
  afterStep(){

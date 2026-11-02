@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=26';
-import {createSpriteLayout} from './display.js?v=26';
-import {createRoadGeometry,slipRoadPoint,slipRoadEdges,roadworkCones} from './road.js?v=26';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=27';
+import {createSpriteLayout} from './display.js?v=27';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,roadworkCones} from './road.js?v=27';
 const placeSprites=createSpriteLayout();
 const elements=new Map(),$=s=>{if(!elements.has(s))elements.set(s,document.querySelector(s));return elements.get(s)},sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
@@ -111,11 +111,6 @@ function updateInlineReading(){if(editor.hidden)return;const cars=sim.cars.filte
 $('#pause').onclick=()=>{paused=!paused;$('#pause').textContent=paused?'▶':'❚❚';$('#pause').setAttribute('aria-label',paused?'Resume simulation':'Pause simulation')};
 $('#rate').onclick=()=>{rate=rate===1?2:rate===2?4:1;$('#rate').textContent=rate+'×'};
 $('#help').onclick=()=>$('#guide').showModal();$('#closeHelp').onclick=$('#begin').onclick=()=>$('#guide').close();
-// iPhone permits audio only after a deliberate user gesture.
-let audio=null,osc=null,gain=null,sound=false;
-$('#sound').onclick=async()=>{try{if(!audio){audio=new(window.AudioContext||window.webkitAudioContext)();osc=audio.createOscillator();gain=audio.createGain();gain.gain.value=0;osc.type='sine';osc.connect(gain);gain.connect(audio.destination);osc.start()}await audio.resume();sound=!sound;$('#sound').textContent=sound?'Sound on':'Sound off';$('#sound').setAttribute('aria-pressed',String(sound))}catch{notify('Audio unavailable in this browser. Blue lights remain visible.')}};
-function updateSiren(){if(!audio)return;const active=sound&&!paused&&!document.hidden&&sim.cars.some(c=>c.emergency&&c.x>0&&c.x<LENGTH);gain.gain.setTargetAtTime(active?.035:0,audio.currentTime,.08);if(active)osc.frequency.setTargetAtTime(650+330*(.5+.5*Math.sin(audio.currentTime*5)),audio.currentTime,.05)}
-document.addEventListener('visibilitychange',()=>{if(gain&&document.hidden)gain.gain.setTargetAtTime(0,audio.currentTime,.02)});
 // The road surface does not change between frames. Repaint only for resize/zoom.
 let scenery=null,sceneryKey='';
 let roadSurface=null,roadSurfaceKey='';
@@ -134,6 +129,11 @@ function paintScenery(ctx,geo){
   base.save();base.translate(w-15,h/2);base.rotate(-Math.PI/2);base.fillStyle='#79968c';base.font='9px sans-serif';base.fillText('NORTHBOUND  →',-45,0);base.restore();
  }
  ctx.drawImage(roadSurface,0,0,w,h);
+ // Exit branches use the fixed projection and a tangent-matched curve.
+ for(const r of operations.ramps){
+  ctx.beginPath();for(let n=0;n<=60;n++){const p=offRampPoint(geo,r,r.x+100+n*10);if(n)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);}
+  ctx.strokeStyle='#a2b3a2';ctx.lineWidth=lw+2;ctx.stroke();ctx.strokeStyle='#35464a';ctx.lineWidth=lw;ctx.stroke();
+ }
  // Sample in screen space and reuse these edge points for fill and markings.
  const joins=operations.ramps.map(r=>{
   const start=y(r.x-r.approachLength),end=y(r.x),points=[];
@@ -149,7 +149,7 @@ function paintScenery(ctx,geo){
  ctx.strokeStyle='#a2b3a2';ctx.lineWidth=1;ctx.setLineDash([]);
  const ys=[-80,h+80,...joins.flatMap(j=>[j.end,j.gore].filter(y=>y>=-80&&y<=h+80))];for(let py=-80;py<=h+80;py+=6)ys.push(py);ys.sort((a,b)=>a-b);
  ctx.beginPath();
- for(let i=1;i<ys.length;i++){const a=ys[i-1],b=ys[i],mid=(a+b)/2;if(joins.some(j=>mid>=j.end&&mid<=j.gore))continue;ctx.moveTo(geo.centerAtY(a)-roadW/2,a);ctx.lineTo(geo.centerAtY(b)-roadW/2,b);}
+ for(let i=1;i<ys.length;i++){const a=ys[i-1],b=ys[i],mid=(a+b)/2;if(joins.some(j=>mid>=j.end&&mid<=j.gore)||operations.ramps.some(r=>{const x=geo.unproject(mid),p=offRampPoint(geo,r,x);return x>=r.x+100&&x<=r.x+700&&p.x+lw/2>=geo.leftAt(x)}))continue;ctx.moveTo(geo.centerAtY(a)-roadW/2,a);ctx.lineTo(geo.centerAtY(b)-roadW/2,b);}
  ctx.stroke();
  for(const {points} of joins){
   ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.outer,p.y):ctx.moveTo(p.outer,p.y));ctx.stroke();
@@ -201,7 +201,7 @@ if(work.sceneId!=null&&work.status!=='complete'){
 }
 const incidentLabels=[],incidentMarkers=[];
 const vehicles=[...sim.cars,...operations.ramps.flatMap(r=>r.queue)];
-for(const c of placeSprites(vehicles,sim.incidents,{left:geo.leftAt(0),laneWidth:lw,project:y,overview:VIEW_LENGTH===LENGTH,laneX:geo.laneX,angleAt:geo.angleAt,rampPosition:c=>slipRoadPoint(geo,operations.ramps[c.onRamp??c.slipRamp],c.x)})){
+for(const c of placeSprites(vehicles,sim.incidents,{left:geo.leftAt(0),laneWidth:lw,project:y,overview:VIEW_LENGTH===LENGTH,laneX:geo.laneX,angleAt:geo.angleAt,offRampPosition:c=>offRampPoint(geo,operations.ramps[c.offRamp],c.x),rampPosition:c=>slipRoadPoint(geo,operations.ramps[c.onRamp??c.slipRamp],c.x)})){
  const {cx,cy,width}=c;const height=c.designHeight;
  if(cy+c.height<0||cy>h)continue;
  if(c.type==='roadworks'||c.type==='police-clearance'){if(!c.bodyIndex)incidentLabels.push(c);continue;}
@@ -244,6 +244,6 @@ function frame(now){
  draw();
  if(now-lastDashboard>=200){updateDashboard();lastDashboard=now;}
  if(now-lastDeskUpdate>=500){updateTrafficDesk();updateOperations();lastDeskUpdate=now;}
- updateSiren();requestAnimationFrame(frame);
+ requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
