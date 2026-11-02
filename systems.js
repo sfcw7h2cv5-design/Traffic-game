@@ -2,7 +2,7 @@
 export class NetworkSystems {
  constructor(sim,{length,gantries}){
   this.sim=sim;this.length=length;this.gantries=gantries;
-  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0}));
+  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,offStart:x-1150,offLength:350,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0}));
   this.phases=[{name:'Normal demand',multiplier:1,duration:90},{name:'Morning rush',multiplier:1.8,duration:180},{name:'Demand easing',multiplier:.75,duration:100},{name:'Stadium traffic',multiplier:2.2,duration:160},{name:'Normal demand',multiplier:1,duration:150}];
   this.phaseIndex=0;this.phase={...this.phases[0],endsAt:90};
   this.work={x:4200,length:150,lanes:[0],announceAt:45,startsAt:150,status:'scheduled',remaining:180,sceneId:null};
@@ -121,10 +121,10 @@ export class NetworkSystems {
   for(const c of s.cars){
    if(c.offRamp!=null)continue;
    if(c.lane!==0||c.onRamp!=null||c.emergency||c.kind||c.laneChange||c.id%7!==0)continue;
-   const r=this.ramps.find(r=>c.x>=r.x+100&&c.x<r.x+105&&r.mode==='open');
+   const r=this.ramps.find(r=>c.x>=r.offStart&&c.x<r.offStart+5);
    if(r)c.offRamp=r.id;
   }
-  s.cars=s.cars.filter(c=>{if(c.offRamp==null||c.x<this.ramps[c.offRamp].x+700)return true;s.exits.push(s.elapsed);this.recordExit(c);return false;});
+  s.cars=s.cars.filter(c=>{if(c.offRamp==null||c.x<this.ramps[c.offRamp].offStart+this.ramps[c.offRamp].offLength)return true;s.exits.push(s.elapsed);this.recordExit(c);return false;});
  }
 
  updateRamps(dt){

@@ -15,25 +15,40 @@ export function createRoadGeometry(width,height,length,viewLength=length,viewSta
  return {width,height,roadWidth,laneWidth,leftAt,center,centerAtY,project,unproject,scale,scaleAt,laneX,angleAt};
 }
 
-// The acceleration lane follows a long, tangent-matched joining curve.
-// Geometry and drawing share the same path used by the vehicle icons.
+// Keep the full physical approach, but turn its outer feeder in from the
+// map edge. Only the feeder is schematic; the main road projection is fixed.
 export function slipRoadPoint(geometry,ramp,worldX){
- const distance=Math.max(0,ramp.x-worldX),mergeLength=ramp.mergeLength??600;
- const outside=geometry.laneWidth+4,t=Math.max(0,Math.min(1,distance/mergeLength));
- const smooth=t*t*(3-2*t),extra=Math.max(0,distance-mergeLength);
- const offset=distance>mergeLength?outside+extra*extra*.00008:outside*smooth;
- const centerSlope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2;
- const curveSlope=distance>mergeLength?extra*.00016:outside*6*t*(1-t)/mergeLength;
- return {x:geometry.laneX(worldX,0)-offset,y:geometry.project(worldX),angle:Math.atan2(centerSlope+curveSlope,geometry.scaleAt?geometry.scaleAt(worldX):geometry.scale)};
+ const mergeLength=ramp.mergeLength??600,d=Math.max(0,ramp.x-worldX),outside=geometry.laneWidth+4;
+ if(d<=mergeLength){
+  const t=d/mergeLength,shown=ramp.x-d*.7;
+  const smooth=t*t*t*(10+t*(-15+6*t)),slope=30*t*t*(1-t)*(1-t);
+  const centerSlope=(geometry.center(shown+1)-geometry.center(shown-1))/2;
+  return {x:geometry.laneX(shown,0)-outside*smooth,y:geometry.project(shown),angle:Math.atan2(centerSlope*.7+outside*slope/mergeLength,geometry.scale*.7)};
+ }
+ const shown=ramp.x-mergeLength*.7,base={x:geometry.laneX(shown,0)-outside,y:geometry.project(shown)},angle=geometry.angleAt(shown);
+ return feederCurve(geometry,base,angle,d-mergeLength,250,false);
+}
+// A circular bend followed by an open feeder keeps a bounded bend radius.
+// Local rotations match the carriageway tangent at every branch connection.
+function feederCurve(geometry,base,angle,d,turnLength,exit){
+ const radius=geometry.laneWidth*.45,t=Math.min(1,Math.max(0,d/turnLength));
+ const turn=(exit?-Math.PI/2:Math.PI/2)-angle,phi=angle+turn*t;
+ const extra=Math.max(0,d-turnLength),m=radius*Math.abs(turn)/turnLength;
+ const extension=m*extra+geometry.width*(extra/250)**2;
+ const x=base.x+radius*(Math.cos(phi)-Math.cos(angle))-extension;
+ const y=base.y+radius*(Math.sin(phi)-Math.sin(angle));
+ const dx=extra>0?-m-2*geometry.width*extra/62500:-radius*Math.sin(phi)*turn/turnLength;
+ const dy=extra>0?0:radius*Math.cos(phi)*turn/turnLength;
+ return {x,y,angle:Math.atan2(exit?dx:-dx,exit?-dy:dy)};
+}
+export function rampEdges(geometry,p){
+ const half=geometry.laneWidth*.4/2,dx=half*Math.cos(p.angle),dy=half*Math.sin(p.angle);
+ const outer={x:p.x-dx,y:p.y-dy},inner={x:p.x+dx,y:p.y+dy};
+ return {outer,inner,connected:inner.x>=geometry.leftAt(geometry.unproject(inner.y))};
 }
 export function slipRoadEdges(geometry,ramp,worldX){
- const p=slipRoadPoint(geometry,ramp,worldX),distance=Math.max(0,ramp.x-worldX),mergeLength=ramp.mergeLength??600;
- const half=geometry.laneWidth/2;
- const t=Math.max(0,Math.min(1,distance/mergeLength)),smooth=t*t*(3-2*t);
- // The outer boundary meets the motorway edge tangentially; it never cuts
- // across the running lane or leaves a painted end cap on the carriageway.
- const outer=distance>mergeLength?p.x-half:geometry.leftAt(worldX)-(geometry.laneWidth+4)*smooth;
- return {outer,inner:p.x+half,y:p.y,connected:p.x+half>=geometry.leftAt(worldX)};
+ const p=slipRoadPoint(geometry,ramp,worldX),edges=rampEdges(geometry,p);
+ return {outer:edges.outer.x,inner:edges.inner.x,y:p.y,outerPoint:edges.outer,innerPoint:edges.inner,connected:edges.connected};
 }
 
 // Space cones by screen distance, not a fixed count in a tiny patch of road.
@@ -53,10 +68,8 @@ export function roadworkCones(geometry,work){
  return result;
 }
 
-// A diverging branch starts tangentially in lane 1 and eases outwards.
+// Leave before the incoming feeder, following a long curve out of the map.
 export function offRampPoint(geometry,ramp,worldX){
- const start=ramp.x+100,t=Math.max(0,Math.min(1,(worldX-start)/600));
- const offset=(geometry.laneWidth+35)*t*t*(3-2*t);
- const slope=(geometry.center(worldX+1)-geometry.center(worldX-1))/2-(geometry.laneWidth+35)*6*t*(1-t)/600;
- return {x:geometry.laneX(worldX,0)-offset,y:geometry.project(worldX),angle:Math.atan2(slope,geometry.scale)};
+ const start=ramp.offStart??ramp.x-1150,length=ramp.offLength??350;
+ return feederCurve(geometry,{x:geometry.laneX(start,0),y:geometry.project(start)},geometry.angleAt(start),Math.max(0,worldX-start),length/2,true);
 }

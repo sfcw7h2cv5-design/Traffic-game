@@ -65,7 +65,7 @@ function centred(sprites,g,ramps=[]){
   const shoulderRejoin=c.lane>=0&&c.fromLane<0&&c.visualLane<0;
   const expected=ramp!=null?slipRoadPoint(g,ramps[ramp],c.x).x:shoulderRejoin?g.laneX(c.x,-1)+(g.laneX(c.x,0)-g.laneX(c.x,-1))*(c.visualLane+1):g.laneX(c.x,c.lane<0?-1:c.visualLane);
   assert.equal(c.cx,expected,'icon moved beside its actual lane position');
-  assert.equal(c.cy,g.project(c.x));assert.equal(c.packedOffset,0);
+  assert.equal(c.cy,ramp!=null?slipRoadPoint(g,ramps[ramp],c.x).y:g.project(c.x));assert.equal(c.packedOffset,0);
  }
 }
 test('full-network overview draws every vehicle on its actual lane centre without resizing',()=>{

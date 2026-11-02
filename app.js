@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=27';
-import {createSpriteLayout} from './display.js?v=27';
-import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,roadworkCones} from './road.js?v=27';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=28';
+import {createSpriteLayout} from './display.js?v=28';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,rampEdges,roadworkCones} from './road.js?v=28';
 const placeSprites=createSpriteLayout();
 const elements=new Map(),$=s=>{if(!elements.has(s))elements.set(s,document.querySelector(s));return elements.get(s)},sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
@@ -129,31 +129,35 @@ function paintScenery(ctx,geo){
   base.save();base.translate(w-15,h/2);base.rotate(-Math.PI/2);base.fillStyle='#79968c';base.font='9px sans-serif';base.fillText('NORTHBOUND  →',-45,0);base.restore();
  }
  ctx.drawImage(roadSurface,0,0,w,h);
- // Exit branches use the fixed projection and a tangent-matched curve.
- for(const r of operations.ramps){
-  ctx.beginPath();for(let n=0;n<=60;n++){const p=offRampPoint(geo,r,r.x+100+n*10);if(n)ctx.lineTo(p.x,p.y);else ctx.moveTo(p.x,p.y);}
-  ctx.strokeStyle='#a2b3a2';ctx.lineWidth=lw+2;ctx.stroke();ctx.strokeStyle='#35464a';ctx.lineWidth=lw;ctx.stroke();
+ // Sample both branch types from their shared vehicle paths. Edge offsets
+ // follow the curve normals, preserving one lane width even on tight bends.
+ const branches=[];
+ for(const r of operations.ramps)for(const exit of [true,false]){
+  const start=exit?r.offStart:r.x-r.approachLength,end=exit?r.offStart+r.offLength:r.x;
+  const point=exit?offRampPoint:slipRoadPoint,points=[];
+  const count=Math.max(100,Math.ceil((end-start)*geo.scale/3));
+  for(let n=0;n<=count;n++){const p=point(geo,r,start+(end-start)*n/count);points.push({...p,...rampEdges(geo,p)});}
+  if(points.every(p=>p.y<-100)||points.every(p=>p.y>h+100))continue;
+  branches.push({r,exit,points});
  }
- // Sample in screen space and reuse these edge points for fill and markings.
- const joins=operations.ramps.map(r=>{
-  const start=y(r.x-r.approachLength),end=y(r.x),points=[];
-  if(start<-80||end>h+80)return null;
-  const visibleStart=Math.min(h+80,start),visibleEnd=Math.max(-80,end),count=Math.max(2,Math.ceil((visibleStart-visibleEnd)/6));
-  for(let i=0;i<=count;i++){const py=visibleStart+(visibleEnd-visibleStart)*i/count,world=geo.unproject(py);points.push({...slipRoadEdges(geo,r,world),world});}
-  const connected=points.findIndex(p=>p.connected);
-  return {r,points,end,gore:connected>=0?points[connected].y:end};
- }).filter(Boolean);
- for(const join of joins){
-  const points=join.points;ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.outer,p.y):ctx.moveTo(p.outer,p.y));for(let i=points.length-1;i>=0;i--)ctx.lineTo(points[i].inner,points[i].y);ctx.closePath();ctx.fillStyle='#35464a';ctx.fill();
+ const edgePath=(points,key)=>{ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p[key].x,p[key].y):ctx.moveTo(p[key].x,p[key].y));};
+ for(const {points} of branches){
+  ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.outer.x,p.outer.y):ctx.moveTo(p.outer.x,p.outer.y));
+  for(let i=points.length-1;i>=0;i--)ctx.lineTo(points[i].inner.x,points[i].inner.y);
+  ctx.closePath();ctx.fillStyle='#35464a';ctx.fill();
  }
- ctx.strokeStyle='#a2b3a2';ctx.lineWidth=1;ctx.setLineDash([]);
- const ys=[-80,h+80,...joins.flatMap(j=>[j.end,j.gore].filter(y=>y>=-80&&y<=h+80))];for(let py=-80;py<=h+80;py+=6)ys.push(py);ys.sort((a,b)=>a-b);
- ctx.beginPath();
- for(let i=1;i<ys.length;i++){const a=ys[i-1],b=ys[i],mid=(a+b)/2;if(joins.some(j=>mid>=j.end&&mid<=j.gore)||operations.ramps.some(r=>{const x=geo.unproject(mid),p=offRampPoint(geo,r,x);return x>=r.x+100&&x<=r.x+700&&p.x+lw/2>=geo.leftAt(x)}))continue;ctx.moveTo(geo.centerAtY(a)-roadW/2,a);ctx.lineTo(geo.centerAtY(b)-roadW/2,b);}
+ // Open the carriageway edge only where a branch actually meets it.
+ const openings=branches.map(b=>b.points.filter(p=>p.connected)).filter(p=>p.length).map(points=>({low:Math.min(...points.map(p=>p.inner.y)),high:Math.max(...points.map(p=>p.inner.y))}));
+ ctx.strokeStyle='#a2b3a2';ctx.lineWidth=1;ctx.setLineDash([]);ctx.beginPath();
+ for(let py=-80;py<h+80;py+=2){if(openings.some(o=>py>=o.low-2&&py<=o.high+2))continue;ctx.moveTo(geo.centerAtY(py)-roadW/2,py);ctx.lineTo(geo.centerAtY(py+2)-roadW/2,py+2);}
  ctx.stroke();
- for(const {points} of joins){
-  ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.outer,p.y):ctx.moveTo(p.outer,p.y));ctx.stroke();
-  ctx.beginPath();for(let i=0;i<points.length;i++){const p=points[i];if(p.connected){if(i)ctx.lineTo(geo.leftAt(p.world),p.y);break;}if(i)ctx.lineTo(p.inner,p.y);else ctx.moveTo(p.inner,p.y);}ctx.stroke();
+ for(const {points,exit} of branches){
+  const outside=points.filter(p=>p.outer.x<geo.leftAt(geo.unproject(p.outer.y)));if(outside.length){edgePath(outside,'outer');ctx.stroke();}
+  const separate=points.filter(p=>!p.connected);if(separate.length){edgePath(separate,'inner');ctx.stroke();}
+  // Short broken edge lines guide traffic through the open mouth.
+  const connected=points.filter(p=>p.connected);
+  if(connected.length>1){ctx.save();ctx.strokeStyle='#a2b3a299';ctx.setLineDash([3,6]);ctx.beginPath();connected.forEach((p,i)=>{const x=geo.leftAt(geo.unproject(p.y));if(i)ctx.lineTo(x,p.y);else ctx.moveTo(x,p.y);});ctx.stroke();ctx.restore();}
+  if(exit){const p=points[Math.floor(points.length*.2)];ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);ctx.strokeStyle='#cad8c1';ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(0,5);ctx.lineTo(0,-5);ctx.moveTo(-3,-1);ctx.lineTo(0,-5);ctx.lineTo(3,-1);ctx.stroke();ctx.restore();}
  }
  ctx.setLineDash([8,12]);for(const offset of [-roadW/2+lw,-roadW/2+lw*2]){roadPath(ctx,geo,offset);ctx.strokeStyle='#82938b88';ctx.lineWidth=1;ctx.stroke();}ctx.setLineDash([]);
  ctx.font='9px sans-serif';ctx.fillStyle='#91aa99';ctx.textAlign='right';
@@ -222,6 +226,7 @@ GANTRIES.forEach((g,gi)=>{const gy=y(g),left=geo.leftAt(g);if(gy<20||gy>h-20)ret
  ctx.fillStyle='#e1c4a3';ctx.font='7px sans-serif';ctx.fillText(c.status==='recovering'?'LOADING':c.status==='recovery-en-route'?'TOW COMING':c.status==='awaiting-recovery'?'TOW CALLED':c.status==='workers-withdrawn'?'WORK PAUSED':'CREWS HERE',labelX,labelY+24);
 }
 for(const c of incidentMarkers){ctx.strokeStyle='#ffab85';ctx.lineWidth=1.2;ctx.beginPath();ctx.arc(c.cx,c.cy+3,7,0,Math.PI*2);ctx.stroke();}
+if(VIEW_LENGTH===LENGTH){ctx.textAlign='center';ctx.fillStyle='#b8d99e';ctx.font='bold 9px sans-serif';ctx.fillText('↑ FREE EXIT',geo.center(LENGTH-250),14);}
 ctx.textAlign='center';ctx.fillStyle='#93b29e';ctx.font='9px sans-serif';ctx.fillText('↑     ↑     ↑',w/2,h-18)}
 function updateDashboard(){
  updateInlineReading();updateResponseStatus();

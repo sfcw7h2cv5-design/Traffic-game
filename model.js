@@ -1,5 +1,7 @@
 import {NetworkSystems} from './systems.js';
 export const LENGTH = 10000;
+// Keep the clipped top edge clear of incidents: outflow is always free.
+export const EXIT_CLEAR_START = LENGTH - 500;
 export const GANTRIES = [450, 1550, 2650, 3750, 4850, 6450, 8050];
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
@@ -97,7 +99,7 @@ export class Simulation {
     return target;
   }
   obstacle(car, lane, traffic = this.cars) {
-    let pos = LENGTH + 1000, speed = car.desired;
+    let pos = Infinity, speed = car.desired;
     const index=this._stepTrafficIndexes?.get(traffic);
     if(index){
       const leader=indexedLeader(index,car,lane);
@@ -119,10 +121,10 @@ export class Simulation {
     return { gap: Math.max(.1, pos - car.x), speed };
   }
   incidentWindows(){
-    return GANTRIES.map((g,i)=>({start:g+350,end:Math.min(LENGTH-150,(GANTRIES[i+1]??LENGTH+250)-350)}));
+    return GANTRIES.map((g,i)=>({start:g+350,end:Math.min(EXIT_CLEAR_START,(GANTRIES[i+1]??LENGTH+250)-350)}));
   }
   incidentPositionAllowed(x){
-    return x>=150&&x<=LENGTH-150&&GANTRIES.every(g=>Math.abs(x-g)>=350)&&this.incidents.every(i=>Math.abs(x-i.x)>=600);
+    return x>=150&&x<=EXIT_CLEAR_START&&GANTRIES.every(g=>Math.abs(x-g)>=350)&&this.incidents.every(i=>Math.abs(x-i.x)>=600);
   }
   nextIncidentPosition(){
     if(!this.incidentZones.length){

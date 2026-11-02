@@ -447,3 +447,21 @@ test('a faster ordinary driver waits for a real right-hand gap before overtaking
  }
  assert(passedOnRight&&overtook,'driver did not use the available right-hand gap');
 });
+test('the final 500 m cannot generate a hidden incident queue at the top edge',()=>{
+ const s=new Simulation(()=>.999);s.cars=[];s.incidents=[];
+ assert(!s.incidentPositionAllowed(9850));assert(!s.incidentPositionAllowed(10000));
+ for(const w of s.incidentWindows())assert(w.end<=9500);
+ for(let n=0;n<100;n++)assert(s.nextIncidentPosition()<=9500);
+ const c=s.spawn(0,9850,25);const incident=s.addIncident(0,9850,'breakdown');
+ assert(incident&&incident.x<=9500);assert(s.cars.includes(c),'off-screen vehicle converted into obstruction');
+ assert.equal(s.addMultiLaneIncident('shed-load',9850,[0,1]),null);
+});
+test('all three lanes flow across the top boundary without a virtual downstream queue',()=>{
+ const s=new Simulation(()=>.5);s.cars=[];s.incidents=[];s.systemsEnabled=false;
+ s.nextIncident=s.nextEmergency=s.nextArrival=Infinity;s.waiting=0;
+ const cars=[0,1,2].map(l=>s.spawn(l,9990,25));
+ for(const c of cars){Object.assign(c,{truck:false,desired:25,courtesy:1,cooldown:Infinity,decision:Infinity});assert.equal(s.obstacle(c,c.lane).gap,Infinity);}
+ for(let n=0;n<10;n++)s.step(.1);
+ assert.equal(s.cars.length,0);assert.equal(s.exits.length,3);
+ for(const c of cars)assert(c.v>24.9,'driver braked for an off-network obstruction');
+});

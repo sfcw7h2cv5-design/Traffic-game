@@ -104,7 +104,7 @@ test('speed anticipation is continuous across 400 m and respects the posted limi
 test('settled traffic follows an exit branch continuously and is counted once',()=>{
  const s=setup(),o=s.systems,r=o.ramps[1];
  while(s.id%7)s.id++;
- const c=s.spawn(0,r.x+101,20);Object.assign(c,{truck:false,length:4.7,desired:25,cooldown:Infinity,decision:Infinity});
+ const c=s.spawn(0,r.offStart+1,20);Object.assign(c,{truck:false,length:4.7,desired:25,cooldown:Infinity,decision:Infinity});
  o.updateOffRamps();assert.equal(c.offRamp,r.id);let before=c.x;
  for(let n=0;n<600&&s.cars.includes(c);n++){s.step(.1);assert(c.x>=before);assert(c.x-before<4);before=c.x;}
  assert(!s.cars.includes(c));assert.equal(o.totalExited,1);assert.equal(s.exits.length,1);

@@ -26,7 +26,7 @@ test('detail camera keeps the selected gantry visible while using the same road 
 
 test('slip-road path stays left of lane 1 and joins continuously',()=>{
  const g=createRoadGeometry(390,1000,10000),r={x:5900};
- for(let d=750;d>=0;d--){const p=slipRoadPoint(g,r,r.x-d);assert(p.x<=g.laneX(r.x-d,0));assert.equal(p.y,g.project(r.x-d));}
+ for(let d=750;d>=0;d--){const p=slipRoadPoint(g,r,r.x-d);assert(p.x<=g.laneX(r.x-d,0));if(d<=600)assert.equal(p.y,g.project(r.x-d*.7));}
  assert.equal(slipRoadPoint(g,r,r.x).x,g.laneX(r.x,0));
  const a=slipRoadPoint(g,r,r.x-120-.001),b=slipRoadPoint(g,r,r.x-120+.001);assert(Math.hypot(a.x-b.x,a.y-b.y)<.01);
 });
@@ -44,16 +44,16 @@ test('joining curve and pavement meet the motorway with matching tangents',()=>{
  for(const width of [320,390,844])for(const view of [10000,400])for(const x of [1200,5900,9000]){
   const g=createRoadGeometry(width,1055,LENGTH,view,x-200),r={x,mergeLength:600,approachLength:1100};
   const join=slipRoadPoint(g,r,x),outer=slipRoadEdges(g,r,x);
-  assert.equal(join.x,g.laneX(x,0));assert.equal(outer.outer,g.leftAt(x));
+  assert.equal(join.x,g.laneX(x,0));assert(outer.outer>g.leftAt(x));
   assert(Math.abs(join.angle-g.angleAt(x))<1e-7);
   const before=slipRoadPoint(g,r,x-.01),slope=(join.x-before.x)/.01;
   const mainSlope=(g.laneX(x,0)-g.laneX(x-.01,0))/.01;
-  assert(Math.abs(slope-mainSlope)<.00001);
+  assert(Math.abs(slope-mainSlope*.7)<.00001);
   let sawSeparate=false,sawConnected=false;
   for(let d=1100;d>=0;d-=5){
    const p=slipRoadPoint(g,r,x-d),edge=slipRoadEdges(g,r,x-d);
-   assert(p.x<=g.laneX(x-d,0));assert(edge.outer<=g.leftAt(x-d)+1e-7);
-   assert(edge.inner>edge.outer);assert(Math.abs(edge.inner-edge.outer-g.laneWidth)<1e-7);assert(Number.isFinite(p.angle));
+   assert(p.x<=g.laneX(g.unproject(p.y),0)+1e-7);
+   assert(Math.abs(Math.hypot(edge.innerPoint.x-edge.outerPoint.x,edge.innerPoint.y-edge.outerPoint.y)-g.laneWidth*.4)<1e-7);assert(Number.isFinite(p.angle));
    if(edge.connected)sawConnected=true;else sawSeparate=true;
   }
   assert(sawSeparate&&sawConnected);
@@ -89,8 +89,25 @@ test('road shape, junctions and gantries stay fixed while traffic queues and cle
 test('off ramps diverge smoothly from the fixed lane 1 centre',async()=>{
  const {offRampPoint}=await import('./road.js');
  const g=createRoadGeometry(420,1200,10000),r={x:5900};
- const start=offRampPoint(g,r,6000),near=offRampPoint(g,r,6000.001),end=offRampPoint(g,r,6600);
- assert.equal(start.x,g.laneX(6000,0));
+ const start=offRampPoint(g,r,4750),near=offRampPoint(g,r,4750.001),end=offRampPoint(g,r,5100);
+ assert.equal(start.x,g.laneX(4750,0));
  assert(Math.abs(near.angle-start.angle)<.0001);
- assert(end.x<g.leftAt(6600));assert.equal(end.y,g.project(6600));
+ assert(end.x<g.leftAt(5100));assert(end.x<0);assert(end.y>g.project(5300));
+});
+test('exits leave before the incoming feeder without crossing it on the map',async()=>{
+ const {offRampPoint}=await import('./road.js');
+ for(const width of [320,390,844,1440]){
+  const s=new Simulation(()=>.5),g=createRoadGeometry(width,1200,LENGTH);
+  for(const r of s.systems.ramps){
+   assert(r.offStart>=0);assert(r.offStart+r.offLength<r.x-r.mergeLength);
+   const exit=[],entry=[];
+   for(let n=0;n<=1000;n++){
+    exit.push(offRampPoint(g,r,r.offStart+r.offLength*n/1000));
+    entry.push(slipRoadPoint(g,r,r.x-r.approachLength*n/1000));
+   }
+   const atLeft=points=>points.reduce((a,b)=>Math.abs(a.x)<Math.abs(b.x)?a:b);
+   assert(atLeft(exit).y>atLeft(entry).y+g.laneWidth*.4,'outgoing and incoming feeders cross');
+   for(const p of [...exit,...entry])assert(Number.isFinite(p.angle));
+  }
+ }
 });
