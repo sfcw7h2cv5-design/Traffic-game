@@ -434,8 +434,9 @@ test('a faster ordinary driver waits for a real right-hand gap before overtaking
  for(let n=0;n<10;n++){s.step(.1);assert.equal(fast.lane,0,'overtook into the vehicle alongside');}
  let passedOnRight=false,overtook=false;
  for(let n=0;n<350;n++){
-  s.step(.1);
-  assert(fast.lane<=1,'ordinary overtake skipped a lane');
+  const previousLane=fast.lane,wasTurning=!!fast.laneChange;s.step(.1);
+  assert(Math.abs(fast.lane-previousLane)<=1,'ordinary overtake skipped a lane');
+  if(fast.lane!==previousLane)assert(!wasTurning,'driver changed target before completing its turn');
   if(fast.lane===1)passedOnRight=true;
   if(fast.x>slower.x+slower.length)overtook=true;
   const bodies=[fast,slower,priority];

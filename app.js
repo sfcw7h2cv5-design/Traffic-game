@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=25';
-import {createSpriteLayout} from './display.js?v=25';
-import {createRoadGeometry,slipRoadPoint,slipRoadEdges,roadworkCones} from './road.js?v=25';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=26';
+import {createSpriteLayout} from './display.js?v=26';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,roadworkCones} from './road.js?v=26';
 const placeSprites=createSpriteLayout();
 const elements=new Map(),$=s=>{if(!elements.has(s))elements.set(s,document.querySelector(s));return elements.get(s)},sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;

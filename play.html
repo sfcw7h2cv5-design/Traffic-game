@@ -46,7 +46,7 @@ canvas{height:1160px}.road-sign-target.gantry-side{font-size:9px}#inlineSignals{
 <aside>
 <section class="scenario"><div class="eyebrow">TRAFFIC DESK</div><h2>Manage the approach.</h2><p id="trafficAdvice" role="status">Reading the motorway…</p><button id="applyAdvice" hidden>Set suggested approach limits</button><div class="desk-metrics"><div><label>STOPPED VEHICLES</label><strong id="stoppedCount">0</strong></div><div><label>HARD BRAKES / MIN</label><strong id="brakingCount">0</strong></div></div><p class="strategy-note">Lower limits before a queue can smooth arrivals and reduce sudden braking. Watch flow and stopped vehicles: setting limits too low can reduce throughput.</p><div class="scenarioactions"><span class="auto-incidents">● Random incidents · automatic recovery</span></div><div id="event" role="status">Control desk ready. Random incidents are active.</div></section><details class="operations"><summary>Network operations</summary><div class="operations-body"><h3>Junction slip roads</h3><div id="rampsList"></div><h3>Scheduled roadworks</h3><p id="workReading"></p><button id="protectWorks">Prepare work-zone signals</button><h3>Police rolling hold</h3><p id="policeReading"></p><p class="strategy-note">A police convoy slows every lane while a debris team works, then releases traffic automatically.</p></div></details><details class="objectives"><summary>Optional shift goals <span id="objectiveCount">0/4</span></summary><p>Keep experimenting. Goals never end the simulation or create a losing condition.</p><div id="objectiveList"></div></details></aside></div>
 <footer><span>DESIGNED FOR FLOW, NOT FAILURE.</span><span>Keep left · Overtake right · Live lane control</span></footer></main>
-<dialog id="guide"><button id="closeHelp" class="close" aria-label="Close guide">×</button><div class="eyebrow">WELCOME TO THE CONTROL CENTRE</div><h2>A calmer road starts upstream.</h2><p>Vehicles travel upwards through seven gantries along 10 km of motorway. The full motorway and all seven gantries are visible together. Incidents have orange rings and labelled callouts between gantries. The overview keeps the road and gantries fixed. Vehicles are much smaller so the full 10 km can stay in view; Detail shows larger vehicle icons. Tap Detail, then choose a gantry or point on the road to inspect. Use Upstream/Downstream to move the close-up; Show all returns to the network. Tap an individual overhead sign to edit that lane directly on the road. Tap the gantry’s side label to set all three lanes. Tap elsewhere on the road to dismiss the controls. Changes apply immediately.</p><p><b>↖ / ↗ Merge:</b> asks drivers to leave a lane when a safe gap is available. The arrow applies after its gantry; cars can continue in the lane while waiting. <b>× Closed:</b> vehicles merge or stop before the controlled section. Speed limits show mph.</p><p>For an incident, use a merge arrow at the gantry before it, then close the affected lane. Use the traffic desk to spot an approaching queue. Lower limits at the gantry before its tail to smooth arrivals, and watch hard braking, stopped vehicles and network flow. Suggested limits require your tap and never alter lane closures. Random incidents arrive at the traffic desk. Breakdowns always block the left lane; look for a stopped vehicle with flashing hazards. A recovery truck must reach each breakdown and load the vehicle before the lane clears. Recovery is dispatched automatically, and loading takes only a few seconds. Shed loads and pile-ups can block two lanes at once. Set arrows and closures upstream of both lanes; the crew clears the scene automatically. Debris and collisions take longer to clear. Reopen your signals once the obstruction is gone.</p><p>Flow counts vehicles leaving the motorway over the last simulated minute. Demand, headways, braking, lane changes, HGVs and imperfect compliance shape the result. This is an illustrative model, not an engineering prediction.</p><p>Police and ambulances target up to 110 and 100 mph respectively on clear roads; traffic yields when safe. Tap Sound on to hear sirens. Recovery uses the hard shoulder while attending a breakdown, then yields and rejoins normal traffic after loading.</p><p>Tap J1–J3 for slip-road controls. Roads are normally Open; Closed holds traffic for an emergency. Drivers join lane 1 when a safe gap opens. Demand surges arrive automatically. The notice above the road gives the roadworks location, gantry section and affected lanes. Prepare roadwork closures before crews enter, and reopen them after completion. Police rolling holds create a debris-clearance gap, then release themselves. Network operations and optional shift goals are below the traffic desk.</p><p>There is no losing. Pause, experiment, and find a rhythm.</p><button id="begin">Take control →</button></dialog><script>// Scheduled network operations share the same individual-vehicle traffic model.
+<dialog id="guide"><button id="closeHelp" class="close" aria-label="Close guide">×</button><div class="eyebrow">WELCOME TO THE CONTROL CENTRE</div><h2>A calmer road starts upstream.</h2><p>Vehicles travel upwards through seven gantries along 10 km of motorway. The full motorway and all seven gantries are visible together. Incidents have orange rings and labelled callouts between gantries. The overview keeps the road and gantries fixed. Vehicles are much smaller so the full 10 km can stay in view; Detail shows larger vehicle icons. Tap Detail, then choose a gantry or point on the road to inspect. Use Upstream/Downstream to move the close-up; Show all returns to the network. Tap an individual overhead sign to edit that lane directly on the road. Tap the gantry’s side label to set all three lanes. Tap elsewhere on the road to dismiss the controls. Changes apply immediately.</p><p><b>↖ / ↗ Merge:</b> asks drivers to leave a lane when a safe gap is available. The arrow applies after its gantry; cars can continue in the lane while waiting. <b>× Closed:</b> vehicles merge or stop before the controlled section. Speed limits show mph.</p><p>For an incident, use a merge arrow at the gantry before it, then close the affected lane. Use the traffic desk to spot an approaching queue. Lower limits at the gantry before its tail to smooth arrivals, and watch hard braking, stopped vehicles and network flow. Suggested limits require your tap and never alter lane closures. Random incidents arrive at the traffic desk. Breakdowns always block the left lane; look for a stopped vehicle with flashing hazards. A recovery truck must reach each breakdown and load the vehicle before the lane clears. Recovery is dispatched automatically, and loading takes only a few seconds. Shed loads and pile-ups can block two lanes at once. Set arrows and closures upstream of both lanes; the crew clears the scene automatically. Debris and collisions take longer to clear. Reopen your signals once the obstruction is gone.</p><p>Flow counts vehicles leaving the motorway over the last simulated minute. Demand, headways, braking, lane changes, HGVs and imperfect compliance shape the result. Crowded traffic can use all three lanes even at lower limits; cars return left when there is room. This is an illustrative model, not an engineering prediction.</p><p>Police and ambulances target up to 110 and 100 mph respectively on clear roads; traffic yields when safe. Tap Sound on to hear sirens. Recovery uses the hard shoulder while attending a breakdown, then yields and rejoins normal traffic after loading.</p><p>Tap J1–J3 for slip-road controls. Roads are normally Open; Closed holds traffic for an emergency. Drivers match a moving gap to join lane 1. Motorway traffic may move right or ease off gently to help when safe. Demand surges arrive automatically. The notice above the road gives the roadworks location, gantry section and affected lanes. Prepare roadwork closures before crews enter, and reopen them after completion. Police rolling holds create a debris-clearance gap, then release themselves. Network operations and optional shift goals are below the traffic desk.</p><p>There is no losing. Pause, experiment, and find a rhythm.</p><button id="begin">Take control →</button></dialog><script>// Scheduled network operations share the same individual-vehicle traffic model.
 class NetworkSystems {
  constructor(sim,{length,gantries}){
   this.sim=sim;this.length=length;this.gantries=gantries;
@@ -86,26 +86,68 @@ class NetworkSystems {
   // Evaluate actual speed at transfer, and predicted speed only while planning.
   if(front&&frontX-front.length-x<8+v*1.2+Math.max(0,v-front.v)*3)return null;
   if(rear&&x-(car?.length??5)-rearX<8+rear.v*1.5+Math.max(0,rear.v-v)*3)return null;
-  return {v};
+  return {v,frontId:front?.id??null,rearId:rear?.id??null};
+ }
+ rampArrival(car,distance,target){
+  const speed=Math.max(0,car.v),change=target-speed;
+  if(distance<.001)return {time:0,speed};
+  if(Math.abs(change)<.01)return {time:distance/Math.max(.1,speed),speed};
+  const a=change>0?Math.max(.2,car.acceleration):-2;
+  const transition=change/a,travel=(speed+target)*.5*transition;
+  if(distance<=travel){const at=Math.sqrt(Math.max(0,speed*speed+2*a*distance));return {time:(at-speed)/a,speed:at};}
+  return {time:transition+(distance-travel)/Math.max(.1,target),speed:target};
  }
  rampApproach(ramp,traffic){
   const c=ramp.queue[0],distance=Math.max(0,c.rampDistance-ramp.mergeLength),cruise=this.rampCruise(ramp,traffic);
   const stopping=Math.sqrt(2*2*distance);
   if(ramp.mode!=='open')return Math.min(cruise,stopping);
   if(distance<.001)return this.rampGap(ramp,{traffic})?cruise:0;
-  // Adjust arrival time on the approach, rather than driving to a permanent
-  // stop line and restarting for every gap. Recheck actual traffic at transfer.
-  const acceleration=Math.max(.2,c.acceleration);
-  const accelerationTime=Math.max(0,(cruise-c.v)/acceleration);
-  const accelerationDistance=(c.v+cruise)*.5*accelerationTime;
-  const eta=distance<=accelerationDistance?(Math.sqrt(c.v*c.v+2*acceleration*distance)-c.v)/acceleration:accelerationTime+(distance-accelerationDistance)/Math.max(2,cruise);
-  for(const delay of [0,.5,1,2,3,5,8]){
-   const target=Math.max(0,Math.min(cruise,2*distance/Math.max(.001,eta+delay)-c.v));
-   const entrySpeed=Math.min(target,Math.sqrt(c.v*c.v+2*acceleration*distance));
-   if(this.rampGap(ramp,{time:eta+delay,v:entrySpeed,traffic}))return target;
+  // Choose a moving gap using acceleration/deceleration-aware arrival times.
+  // Retain the same front/rear pair while it remains reachable, so the target
+  // does not jump from one gap to another as individual vehicles pass.
+  const old=ramp.gapPlan?.carId===c.id?ramp.gapPlan:null,plans=[];
+  for(const reduction of [0,1,2,3,5,7,10,14,18]){
+   const target=Math.max(4,cruise-reduction),arrival=this.rampArrival(c,distance,target);
+   if(arrival.time>45)continue;
+   const gap=this.rampGap(ramp,{time:arrival.time,v:arrival.speed,traffic});
+   if(gap)plans.push({carId:c.id,frontId:gap.frontId,rearId:gap.rearId,target,arrival:arrival.time});
   }
-  return Math.min(cruise,stopping);
+  const retained=old&&plans.find(p=>p.frontId===old.frontId&&p.rearId===old.rearId);
+  const plan=retained??plans[0];
+  ramp.gapPlan=plan??null;
+  return plan?plan.target:Math.min(cruise,stopping);
  }
+ updateRampCourtesy(){
+  const s=this.sim,requests=new Map(),traffic=this.rampTraffic();
+  for(const ramp of this.ramps){
+   const c=ramp.queue[0];if(!c||ramp.mode!=='open')continue;
+   const entry=ramp.x-ramp.mergeLength,distance=c.rampDistance-ramp.mergeLength;
+   if(distance<25||distance>500)continue;
+   const cruise=this.rampCruise(ramp,traffic),arrival=this.rampArrival(c,distance,cruise);
+   if(arrival.time<3||arrival.time>20||cruise<8)continue;
+   if(ramp.gapPlan?.carId===c.id&&ramp.gapPlan.target>=Math.max(8,cruise*.6))continue;
+   // A usable moving gap needs no intervention. Otherwise only a rear driver
+   // still well upstream may make a small, voluntary speed adjustment.
+   if(this.rampGap(ramp,{time:arrival.time,v:arrival.speed,traffic}))continue;
+   let rear=null,rearAt=-Infinity;
+   for(const car of traffic){
+    const future=car.x+car.v*arrival.time;
+    if(car.emergency||car.onRamp!=null||car.kind==='recovery'||car.lane!==0||Math.abs(car.visualLane-car.lane)>.02||car.x>entry-40||car.v<8||future>=entry)continue;
+    if(future>rearAt){rear=car;rearAt=future;}
+   }
+   if(!rear||Math.abs(rear.x-c.x)<Math.max(15,c.length+rear.length+4))continue;
+   const existing=requests.get(rear.id);
+   if(!existing||entry<existing.entry)requests.set(rear.id,{rampId:ramp.id,entry});
+  }
+  for(const car of s.cars){
+   const request=requests.get(car.id);
+   if(!request){delete car.rampYieldId;delete car.rampYieldEntry;delete car.rampYieldTargetSpeed;delete car.rampYieldUntil;delete car.rampYieldBaseSpeed;continue;}
+   const base=car.rampYieldId===request.rampId?car.rampYieldBaseSpeed:car.v;
+   car.rampYieldId=request.rampId;car.rampYieldEntry=request.entry;car.rampYieldBaseSpeed=base;
+   car.rampYieldTargetSpeed=Math.max(4,base-2.5);car.rampYieldUntil=s.elapsed+1;
+  }
+ }
+
  updateRamps(dt){
   const s=this.sim;
   for(const r of this.ramps){
@@ -138,7 +180,7 @@ class NetworkSystems {
    // Mainline traffic has advanced first and keeps priority. Commit the car
    // once, retaining its matched speed instead of integrating it twice.
    r.queue.shift();c.x=r.x-c.rampDistance;c.onRamp=r.id;c.rampProgress=0;c.cooldown=8;c.decision=2;s.cars.push(c);
-   r.releasing=true;r.lastRelease=s.elapsed;r.joined++;
+   r.releasing=true;r.lastRelease=s.elapsed;r.joined++;r.gapPlan=null;
   }
  }
  protectionGantry(){return this.gantries.findLastIndex(g=>g<this.work.x-this.work.length-50);}
@@ -201,7 +243,7 @@ class NetworkSystems {
  beforeStep(dt){
   const s=this.sim;
   if(s.elapsed>=this.phase.endsAt){this.phaseIndex=(this.phaseIndex+1)%this.phases.length;this.phase={...this.phases[this.phaseIndex],endsAt:s.elapsed+this.phases[this.phaseIndex].duration};this.announce(this.phase.name+' · entry and junction demand are changing.');}
-  this.updateRamps(dt);this.updateWorks(dt);this.updateRoadblock();
+  this.updateRamps(dt);this.updateRampCourtesy();this.updateWorks(dt);this.updateRoadblock();
  }
  recordExit(c){this.totalExited++;if(c.kind==='ambulance')this.ambulancesExited++;}
  afterStep(){
@@ -560,6 +602,7 @@ class Simulation {
       const transitionPlan=transitionIndex>=0&&transitionGoal!=null&&c.x<GANTRIES[transitionIndex]&&c.x>=GANTRIES[transitionIndex]-35&&this.signals[transitionIndex][transitionGoal].mode==='open';
       if(!transitionPlan)c.transitionGantry=null;
       const mandatory=currentClosed||hazard,forced=mandatory||upcoming>=0||advisory||transitionPlan;
+      const rampCourtesy=!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity);
       const approachingSiren=!c.emergency&&sirens.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<600);
       let destinations=[];
       if(transitionPlan){
@@ -625,20 +668,25 @@ class Simulation {
           const candidates=evacuationSteps;
           target = candidates.find(safe) ?? c.lane;
         } else {
+          if(rampCourtesy&&c.cooldown<=0&&safe(c.lane+1)){target=c.lane+1;c.rampClearUntilX=c.rampYieldEntry+80;}
           // Return left unless actively passing a slower vehicle there.
           const left = c.lane - 1;
-          if (!c.emergency && left >= 0 && safe(left)) {
+          if (target===c.lane && !c.emergency && left >= 0 && !(c.x<(c.rampClearUntilX??-Infinity)) && safe(left)) {
             const gap = this.obstacle(c, left, snapshot);
-            if (gap.gap > Math.max(120, c.v * 8) || gap.speed >= Math.min(c.desired, sig.speed * .44704) - 1) target = left;
+            const targetSpeed=Math.min(c.desired,this.speedTarget(c));
+            const crowdedLeft=c.v<22&&gap.gap<Math.max(80,c.v*(c.headway+4));
+            if (!crowdedLeft&&(gap.gap > Math.max(120, c.v * 8) || gap.speed >= targetSpeed - 1)) target = left;
           }
-          const catching = front.gap < Math.max(75, c.v * 3.8) && front.speed < Math.min(c.desired, this.speedTarget(c)) - 2;
+          const targetSpeed=Math.min(c.desired,this.speedTarget(c));
+          const catching = front.gap < Math.max(95, c.v * 5.5) && front.speed < targetSpeed - .7;
+          const followingPressure = front.gap < Math.max(45,3.5+c.v*c.headway*1.8);
           if(c.emergency&&target===c.lane&&catching){
             const options=[c.lane-1,c.lane+1].filter(safe).sort((a,b)=>this.obstacle(c,b).gap-this.obstacle(c,a).gap);
             if(options.length)target=options[0];
           }
-          if (target === c.lane && catching && safe(c.lane + 1)) {
+          if (target === c.lane && (catching||followingPressure) && safe(c.lane + 1)) {
             const right = this.obstacle(c, c.lane + 1, snapshot);
-            if (right.gap > front.gap + 20 || right.speed > front.speed + 2) target = c.lane + 1;
+            if (right.gap > front.gap + (followingPressure?Math.max(20,front.gap*.45):20) || right.speed > front.speed + 2) target = c.lane + 1;
           }
         }
         if (target !== c.lane) {
@@ -687,10 +735,14 @@ class Simulation {
       const unruly = this.scenario === 'reckless' && c.reckless;
       const limit = this.speedTarget(c);
       let desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
+      if(!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity))desired=Math.min(desired,Math.max(4,c.rampYieldTargetSpeed??desired));
       const yielding=yieldRequests.has(c.id);
       c.yieldingFor=yielding?yieldRequests.get(c.id):null;
       if(yielding&&!c.emergency)desired=Math.min(desired,Math.max(4,c.v-1.2));
-      const headway = c.headway * (rain ? 1.35 : unruly ? .65 : 1);
+      // A driver initially accepts the checked joining gap, then opens their
+      // normal following distance progressively along the acceleration lane.
+      const mergeHeadway=c.onRamp!=null?Math.min(c.headway,1.2)+(c.headway-Math.min(c.headway,1.2))*clamp(c.rampProgress??0,0,1):c.headway;
+      const headway = mergeHeadway * (rain ? 1.35 : unruly ? .65 : 1);
       const closing = c.v - front.speed;
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
       let acceleration = c.acceleration * (1 - (c.v / desired) ** 4 - (wanted / front.gap) ** 2);

@@ -343,6 +343,7 @@ export class Simulation {
       const transitionPlan=transitionIndex>=0&&transitionGoal!=null&&c.x<GANTRIES[transitionIndex]&&c.x>=GANTRIES[transitionIndex]-35&&this.signals[transitionIndex][transitionGoal].mode==='open';
       if(!transitionPlan)c.transitionGantry=null;
       const mandatory=currentClosed||hazard,forced=mandatory||upcoming>=0||advisory||transitionPlan;
+      const rampCourtesy=!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity);
       const approachingSiren=!c.emergency&&sirens.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<600);
       let destinations=[];
       if(transitionPlan){
@@ -408,20 +409,25 @@ export class Simulation {
           const candidates=evacuationSteps;
           target = candidates.find(safe) ?? c.lane;
         } else {
+          if(rampCourtesy&&c.cooldown<=0&&safe(c.lane+1)){target=c.lane+1;c.rampClearUntilX=c.rampYieldEntry+80;}
           // Return left unless actively passing a slower vehicle there.
           const left = c.lane - 1;
-          if (!c.emergency && left >= 0 && safe(left)) {
+          if (target===c.lane && !c.emergency && left >= 0 && !(c.x<(c.rampClearUntilX??-Infinity)) && safe(left)) {
             const gap = this.obstacle(c, left, snapshot);
-            if (gap.gap > Math.max(120, c.v * 8) || gap.speed >= Math.min(c.desired, sig.speed * .44704) - 1) target = left;
+            const targetSpeed=Math.min(c.desired,this.speedTarget(c));
+            const crowdedLeft=c.v<22&&gap.gap<Math.max(80,c.v*(c.headway+4));
+            if (!crowdedLeft&&(gap.gap > Math.max(120, c.v * 8) || gap.speed >= targetSpeed - 1)) target = left;
           }
-          const catching = front.gap < Math.max(75, c.v * 3.8) && front.speed < Math.min(c.desired, this.speedTarget(c)) - 2;
+          const targetSpeed=Math.min(c.desired,this.speedTarget(c));
+          const catching = front.gap < Math.max(95, c.v * 5.5) && front.speed < targetSpeed - .7;
+          const followingPressure = front.gap < Math.max(45,3.5+c.v*c.headway*1.8);
           if(c.emergency&&target===c.lane&&catching){
             const options=[c.lane-1,c.lane+1].filter(safe).sort((a,b)=>this.obstacle(c,b).gap-this.obstacle(c,a).gap);
             if(options.length)target=options[0];
           }
-          if (target === c.lane && catching && safe(c.lane + 1)) {
+          if (target === c.lane && (catching||followingPressure) && safe(c.lane + 1)) {
             const right = this.obstacle(c, c.lane + 1, snapshot);
-            if (right.gap > front.gap + 20 || right.speed > front.speed + 2) target = c.lane + 1;
+            if (right.gap > front.gap + (followingPressure?Math.max(20,front.gap*.45):20) || right.speed > front.speed + 2) target = c.lane + 1;
           }
         }
         if (target !== c.lane) {
@@ -470,10 +476,14 @@ export class Simulation {
       const unruly = this.scenario === 'reckless' && c.reckless;
       const limit = this.speedTarget(c);
       let desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
+      if(!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity))desired=Math.min(desired,Math.max(4,c.rampYieldTargetSpeed??desired));
       const yielding=yieldRequests.has(c.id);
       c.yieldingFor=yielding?yieldRequests.get(c.id):null;
       if(yielding&&!c.emergency)desired=Math.min(desired,Math.max(4,c.v-1.2));
-      const headway = c.headway * (rain ? 1.35 : unruly ? .65 : 1);
+      // A driver initially accepts the checked joining gap, then opens their
+      // normal following distance progressively along the acceleration lane.
+      const mergeHeadway=c.onRamp!=null?Math.min(c.headway,1.2)+(c.headway-Math.min(c.headway,1.2))*clamp(c.rampProgress??0,0,1):c.headway;
+      const headway = mergeHeadway * (rain ? 1.35 : unruly ? .65 : 1);
       const closing = c.v - front.speed;
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
       let acceleration = c.acceleration * (1 - (c.v / desired) ** 4 - (wanted / front.gap) ** 2);

@@ -57,3 +57,8 @@ A seeded congested-traffic benchmark reduced model step times from about 2.23 to
 Roadworks announcements above the network include their kilometre point, gantry section and affected lanes, including while awaiting protection or paused. The notice reserves space so changing text does not move the map.
 
 Merge arrows are advisory within their own downstream section. Drivers continue in the current open lane until an arrow applies, then move when a safe usable gap exists. A future arrow does not send them into a currently closed lane, and arrows pointing at closed lanes or at each other do not cause repeated lane changes. Red Xs and physical obstructions still trigger advance evacuation; staged transitions remain committed through the section boundary.
+
+
+At reduced speed limits, drivers consider following pressure and usable space in the next lane as well as speed difference. They overtake on the right only through safe gaps, avoid returning into a crowded left lane, and keep left when space allows. Heavier demand therefore uses all three lanes without putting ordinary HGVs in lane 3.
+
+Slip-road arrivals estimate acceleration and braking time and keep aiming for the same reachable moving gap. Where useful, one motorway driver can move right safely or make a small temporary speed adjustment to help create room; a driver moving aside stays clear until passing the junction. Existing priority and physical gap checks still apply. Joining headway opens progressively from the short merge gap to the driver's normal following distance, preventing sudden braking immediately after admission.

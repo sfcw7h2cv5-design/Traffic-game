@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "start": "python3 -m http.server 3000 --bind 0.0.0.0",
-    "test": "node --test --test-isolation=none model.test.js display.test.js road.test.js systems.test.js lane-signs.test.js recovery.test.js",
+    "test": "node --test --test-isolation=none model.test.js display.test.js road.test.js systems.test.js lane-signs.test.js recovery.test.js lane-usage.test.js junction-flow.test.js",
     "build:preview": "node scripts/build-preview.mjs"
   },
   "type": "module"

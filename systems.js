@@ -38,26 +38,68 @@ export class NetworkSystems {
   // Evaluate actual speed at transfer, and predicted speed only while planning.
   if(front&&frontX-front.length-x<8+v*1.2+Math.max(0,v-front.v)*3)return null;
   if(rear&&x-(car?.length??5)-rearX<8+rear.v*1.5+Math.max(0,rear.v-v)*3)return null;
-  return {v};
+  return {v,frontId:front?.id??null,rearId:rear?.id??null};
+ }
+ rampArrival(car,distance,target){
+  const speed=Math.max(0,car.v),change=target-speed;
+  if(distance<.001)return {time:0,speed};
+  if(Math.abs(change)<.01)return {time:distance/Math.max(.1,speed),speed};
+  const a=change>0?Math.max(.2,car.acceleration):-2;
+  const transition=change/a,travel=(speed+target)*.5*transition;
+  if(distance<=travel){const at=Math.sqrt(Math.max(0,speed*speed+2*a*distance));return {time:(at-speed)/a,speed:at};}
+  return {time:transition+(distance-travel)/Math.max(.1,target),speed:target};
  }
  rampApproach(ramp,traffic){
   const c=ramp.queue[0],distance=Math.max(0,c.rampDistance-ramp.mergeLength),cruise=this.rampCruise(ramp,traffic);
   const stopping=Math.sqrt(2*2*distance);
   if(ramp.mode!=='open')return Math.min(cruise,stopping);
   if(distance<.001)return this.rampGap(ramp,{traffic})?cruise:0;
-  // Adjust arrival time on the approach, rather than driving to a permanent
-  // stop line and restarting for every gap. Recheck actual traffic at transfer.
-  const acceleration=Math.max(.2,c.acceleration);
-  const accelerationTime=Math.max(0,(cruise-c.v)/acceleration);
-  const accelerationDistance=(c.v+cruise)*.5*accelerationTime;
-  const eta=distance<=accelerationDistance?(Math.sqrt(c.v*c.v+2*acceleration*distance)-c.v)/acceleration:accelerationTime+(distance-accelerationDistance)/Math.max(2,cruise);
-  for(const delay of [0,.5,1,2,3,5,8]){
-   const target=Math.max(0,Math.min(cruise,2*distance/Math.max(.001,eta+delay)-c.v));
-   const entrySpeed=Math.min(target,Math.sqrt(c.v*c.v+2*acceleration*distance));
-   if(this.rampGap(ramp,{time:eta+delay,v:entrySpeed,traffic}))return target;
+  // Choose a moving gap using acceleration/deceleration-aware arrival times.
+  // Retain the same front/rear pair while it remains reachable, so the target
+  // does not jump from one gap to another as individual vehicles pass.
+  const old=ramp.gapPlan?.carId===c.id?ramp.gapPlan:null,plans=[];
+  for(const reduction of [0,1,2,3,5,7,10,14,18]){
+   const target=Math.max(4,cruise-reduction),arrival=this.rampArrival(c,distance,target);
+   if(arrival.time>45)continue;
+   const gap=this.rampGap(ramp,{time:arrival.time,v:arrival.speed,traffic});
+   if(gap)plans.push({carId:c.id,frontId:gap.frontId,rearId:gap.rearId,target,arrival:arrival.time});
   }
-  return Math.min(cruise,stopping);
+  const retained=old&&plans.find(p=>p.frontId===old.frontId&&p.rearId===old.rearId);
+  const plan=retained??plans[0];
+  ramp.gapPlan=plan??null;
+  return plan?plan.target:Math.min(cruise,stopping);
  }
+ updateRampCourtesy(){
+  const s=this.sim,requests=new Map(),traffic=this.rampTraffic();
+  for(const ramp of this.ramps){
+   const c=ramp.queue[0];if(!c||ramp.mode!=='open')continue;
+   const entry=ramp.x-ramp.mergeLength,distance=c.rampDistance-ramp.mergeLength;
+   if(distance<25||distance>500)continue;
+   const cruise=this.rampCruise(ramp,traffic),arrival=this.rampArrival(c,distance,cruise);
+   if(arrival.time<3||arrival.time>20||cruise<8)continue;
+   if(ramp.gapPlan?.carId===c.id&&ramp.gapPlan.target>=Math.max(8,cruise*.6))continue;
+   // A usable moving gap needs no intervention. Otherwise only a rear driver
+   // still well upstream may make a small, voluntary speed adjustment.
+   if(this.rampGap(ramp,{time:arrival.time,v:arrival.speed,traffic}))continue;
+   let rear=null,rearAt=-Infinity;
+   for(const car of traffic){
+    const future=car.x+car.v*arrival.time;
+    if(car.emergency||car.onRamp!=null||car.kind==='recovery'||car.lane!==0||Math.abs(car.visualLane-car.lane)>.02||car.x>entry-40||car.v<8||future>=entry)continue;
+    if(future>rearAt){rear=car;rearAt=future;}
+   }
+   if(!rear||Math.abs(rear.x-c.x)<Math.max(15,c.length+rear.length+4))continue;
+   const existing=requests.get(rear.id);
+   if(!existing||entry<existing.entry)requests.set(rear.id,{rampId:ramp.id,entry});
+  }
+  for(const car of s.cars){
+   const request=requests.get(car.id);
+   if(!request){delete car.rampYieldId;delete car.rampYieldEntry;delete car.rampYieldTargetSpeed;delete car.rampYieldUntil;delete car.rampYieldBaseSpeed;continue;}
+   const base=car.rampYieldId===request.rampId?car.rampYieldBaseSpeed:car.v;
+   car.rampYieldId=request.rampId;car.rampYieldEntry=request.entry;car.rampYieldBaseSpeed=base;
+   car.rampYieldTargetSpeed=Math.max(4,base-2.5);car.rampYieldUntil=s.elapsed+1;
+  }
+ }
+
  updateRamps(dt){
   const s=this.sim;
   for(const r of this.ramps){
@@ -90,7 +132,7 @@ export class NetworkSystems {
    // Mainline traffic has advanced first and keeps priority. Commit the car
    // once, retaining its matched speed instead of integrating it twice.
    r.queue.shift();c.x=r.x-c.rampDistance;c.onRamp=r.id;c.rampProgress=0;c.cooldown=8;c.decision=2;s.cars.push(c);
-   r.releasing=true;r.lastRelease=s.elapsed;r.joined++;
+   r.releasing=true;r.lastRelease=s.elapsed;r.joined++;r.gapPlan=null;
   }
  }
  protectionGantry(){return this.gantries.findLastIndex(g=>g<this.work.x-this.work.length-50);}
@@ -153,7 +195,7 @@ export class NetworkSystems {
  beforeStep(dt){
   const s=this.sim;
   if(s.elapsed>=this.phase.endsAt){this.phaseIndex=(this.phaseIndex+1)%this.phases.length;this.phase={...this.phases[this.phaseIndex],endsAt:s.elapsed+this.phases[this.phaseIndex].duration};this.announce(this.phase.name+' · entry and junction demand are changing.');}
-  this.updateRamps(dt);this.updateWorks(dt);this.updateRoadblock();
+  this.updateRamps(dt);this.updateRampCourtesy();this.updateWorks(dt);this.updateRoadblock();
  }
  recordExit(c){this.totalExited++;if(c.kind==='ambulance')this.ambulancesExited++;}
  afterStep(){
