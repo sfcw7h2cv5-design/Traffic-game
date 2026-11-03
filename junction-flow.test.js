@@ -188,3 +188,18 @@ test('a stopped committed merger releases the acceleration lane after its body s
   const follower=s.spawn(0,860,0);Object.assign(follower,{onRamp:r.id,rampMerging:false});assert.equal(s.obstacle(follower,10+r.id).gap,Infinity,'completed merger still reserves the acceleration lane');
  }
 });
+test('a stopped joiner at every junction receives a lasting gap request until it merges',()=>{
+ for(const id of [0,1,2])for(const truck of [false,true]){
+  const s=setup(19),o=s.systems,r=o.ramps[id],point=r.x-r.joinTaper,c=s.spawn(0,point-3.5,0);
+  Object.assign(c,{truck,length:truck?16.5:4.7,desired:25,v:0,headway:2,courtesy:1,onRamp:id,slipRamp:id,rampMerging:false,cooldown:0,decision:0});
+  const main=x=>{const car=s.spawn(0,x,23);Object.assign(car,{truck:false,length:4.7,desired:25,v:23,courtesy:1,headway:1.2,acceleration:1.3,cooldown:Infinity,decision:Infinity});};
+  for(let n=-8;n<=8;n++)main(point+n*50+10);
+  let finished=null;
+  for(let n=0;n<600;n++){
+   if(n%20===0&&s.cars.every(a=>a===c||a.lane!==0||Math.abs(a.x-(point-450))>35))main(point-450);
+   const before=new Map(s.cars.map(c=>[c.id,c.x]));s.step(.1);safe(s,before);
+   if(c.onRamp==null){finished=(n+1)/10;break;}
+  }
+  assert(finished!=null&&finished<(truck?35:25),r.name+' remained stuck despite continuous safe gap assistance');assert(c.x>point);assert.equal(c.slipRamp,null);
+ }
+});

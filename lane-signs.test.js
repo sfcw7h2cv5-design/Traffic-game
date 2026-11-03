@@ -90,3 +90,20 @@ test('a driver already in its committed boundary lane does not ask that lane to 
  c.transitionGantry=2;c.evacuationGoal=1;c.cooldown=100;c.decision=100;
  stepSafe(s);assert.equal(c.lane,1);assert.equal(c.evacuationGoal,1);assert.equal(c.mergeRequest,null);
 });
+test('a driver may move aside through an arrow lane which leads onward into an open lane',()=>{
+ const s=setup(),c=driver(s,0,5200,20);
+ s.signals[4][1].mode='merge-right';Object.assign(c,{rampYieldEntry:5500,rampYieldUntil:1,rampYieldTargetSpeed:18});
+ stepSafe(s);assert.equal(c.lane,1,'legal advisory lane was treated as closed');
+ for(let n=0;n<160&&c.lane!==2;n++)stepSafe(s);assert.equal(c.lane,2,'driver did not continue along the arrow route');
+});
+test('a reopening gantry adds no stop to the remaining open motorway lane',()=>{
+ const s=setup(),boundary=GANTRIES[5],cars=[];
+ s.signals[4][0].mode='merge-right';s.signals[4][2].mode='closed';s.signals[5][0].mode='closed';s.signals[6][1].mode='merge-left';
+ for(let n=0;n<7;n++){const c=driver(s,1,boundary-100-n*60,15);c.headway=1.2;cars.push(c);}
+ const crossed=new Set();
+ for(let n=0;n<700;n++){
+  stepSafe(s);
+  for(const c of cars){assert(c.v>5,'open lane developed an artificial gantry stop');if(c.x>=boundary)crossed.add(c.id);}
+ }
+ assert.equal(crossed.size,cars.length);assert(cars.every(c=>c.x>boundary+400));
+});

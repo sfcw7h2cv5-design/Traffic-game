@@ -1,4 +1,4 @@
-import {NetworkSystems} from './systems.js';
+import {NetworkSystems} from './systems.js?v=33';
 export const LENGTH = 10000;
 // Keep the clipped top edge clear of incidents: outflow is always free.
 export const EXIT_CLEAR_START = LENGTH - 500;
@@ -203,7 +203,18 @@ export class Simulation {
     this.lastEvent=`${type==='pile-up'?'Multi-vehicle collision':'Shed load'} · Lanes ${lanes.map(l=>l+1).join(' & ')} · ${(x/1000).toFixed(2)} km. Protect both lanes upstream.`;this.eventId++;
     return incident;
   }
+  usableArrowRoute(x,lane,source){
+    const visited=new Set([source]);
+    while(lane>=0&&lane<3&&!visited.has(lane)){
+      visited.add(lane);const mode=this.signalAt(x,lane).mode;
+      if(mode==='open')return true;
+      if(!mode.startsWith('merge'))return false;
+      lane=this.mergeTarget(mode,lane);
+    }
+    return false;
+  }
   mergeSite(car,target){
+    if(car.onRamp!=null)return 'ramp:'+car.onRamp;
     let g=GANTRIES.findIndex((x,i)=>x>=car.x-30&&this.signals[i][car.lane]?.mode==='closed');
     if(g<0)g=GANTRIES.findLastIndex((x,i)=>x<=car.x&&this.signals[i][car.lane]?.mode==='closed');
     const hazard=this.incidentBodies().filter(i=>i.lane===car.lane&&i.x>=car.x-25).sort((a,b)=>a.x-b.x)[0];
@@ -365,7 +376,8 @@ export class Simulation {
       if(!transitionPlan)c.transitionGantry=null;
       const localRestriction=[0,1,2].some(l=>this.signalAt(c.x,l).mode==='closed'||this.laneHazardAhead(c.x,l))||GANTRIES.some((x,g)=>x>c.x&&x-c.x<650&&this.signals[g].some(s=>s.mode==='closed'));
       const mandatory=currentClosed||hazard,forced=mandatory||upcoming>=0||advisory||transitionPlan;
-      const rampCourtesy=!c.emergency&&c.lane===0&&(c.zipperYieldEntry!=null||c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity));
+      const waitingRamp=this.cars.find(o=>o.id===c.yieldingFor&&o.onRamp!=null&&!o.rampMerging);
+      const rampCourtesy=!c.emergency&&c.lane===0&&(waitingRamp||c.zipperYieldEntry!=null||c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity));
       const approachingSiren=!c.emergency&&sirens.some(e=>e.emergency&&e.lane===c.lane&&e.x<c.x&&c.x-e.x<600);
       let destinations=[];
       if(transitionPlan){
@@ -403,7 +415,7 @@ export class Simulation {
           if(lane<0||lane>2)return false;
           const routeStep=forced&&evacuationSteps.includes(lane),escape=routeStep&&(mandatory||boundaryTransition);
           const laneMode=this.signalAt(c.x,lane).mode;
-          if(lane<0||lane>2||(!escape&&this.laneHazardAhead(c.x,lane))||(c.truck&&lane===2&&!forced&&!localRestriction)||(laneMode==='closed'&&!escape)||(laneMode.startsWith('merge')&&!routeStep))return false;
+          if(lane<0||lane>2||(!escape&&this.laneHazardAhead(c.x,lane))||(c.truck&&lane===2&&!forced&&!localRestriction)||(laneMode==='closed'&&!escape)||(laneMode.startsWith('merge')&&!routeStep&&!this.usableArrowRoute(c.x,lane,c.lane)))return false;
           if(!escape&&GANTRIES.some((x,g)=>x>c.x&&x-c.x<650&&this.signals[g][lane].mode==='closed'))return false;
           let ahead = this.obstacle(c, lane, this.cars);
           if(escape&&lane!==c.evacuationGoal&&boundaryTransition&&this.signals[upcoming][lane].mode==='closed'){
@@ -431,7 +443,7 @@ export class Simulation {
           const candidates=evacuationSteps;
           target = candidates.find(safe) ?? c.lane;
         } else {
-          if(rampCourtesy&&c.cooldown<=0&&safe(c.lane+1)){target=c.lane+1;c.rampClearUntilX=(c.zipperYieldEntry??c.rampYieldEntry)+80;}
+          if(rampCourtesy&&c.cooldown<=0&&safe(c.lane+1)){target=c.lane+1;c.rampClearUntilX=(c.zipperYieldEntry??c.rampYieldEntry??waitingRamp?.x)+80;}
           // Return left unless actively passing a slower vehicle there.
           const left = c.lane - 1;
           if (target===c.lane && !c.emergency && left >= 0 && !(c.x<(c.rampClearUntilX??-Infinity)) && safe(left)) {
@@ -472,10 +484,10 @@ export class Simulation {
       if(requestedSites.has(site))continue;
       const ahead=this.obstacle(merger,merger.mergeRequest);
       if(ahead.gap<(merger.v<2?2:6+merger.v*.85))continue;
-      let receiver=null;
-      for(const c of this.cars){
+      let receiver=merger.onRamp!=null?this.cars.find(c=>c.id===merger.rampHelperId&&c.lane===merger.mergeRequest&&c.x<merger.x-merger.length-2):null;
+      for(const c of receiver?[]:this.cars){
         if(c.id===merger.id||c.emergency||c.onRamp!=null||c.offRamp!=null||c.lane!==merger.mergeRequest||c.x>=merger.x-merger.length-2||merger.x-c.x>350)continue;
-        const gap=merger.x-merger.length-c.x,target=Math.max(.5,merger.v+2);
+        const gap=merger.x-merger.length-c.x,target=Math.max(.5,merger.v+(merger.onRamp!=null?0:2));
         const neededToEase=c.v>merger.v+5?Math.max(12,(c.v*c.v-target*target)/(2*1.5)+c.v*.5):2;
         if(gap<neededToEase)continue;
         if(!receiver||c.x>receiver.x)receiver=c;
@@ -484,11 +496,11 @@ export class Simulation {
       // A vehicle alongside the merger will pass first; don't slow somebody
       // behind that vehicle to reserve a gap the merger cannot yet reach.
       const alongside=this.cars.some(c=>c.id!==merger.id&&c.id!==receiver.id&&this.occupiedLanes(c).includes(merger.mergeRequest)&&c.x>=merger.x-merger.length-2&&c.x-c.length<=merger.x+2);
-      if(alongside)continue;
+      if(alongside&&merger.onRamp==null)continue;
       const gap=merger.x-merger.length-receiver.x;
       const needed=5+receiver.v*.9+Math.max(0,receiver.v-merger.v)*2;
       const passingBeforeGap=this.cars.some(c=>c.id!==merger.id&&c.id!==receiver.id&&this.occupiedLanes(c).includes(merger.mergeRequest)&&c.x>receiver.x&&c.x<merger.x);
-      if(gap<needed+8||passingBeforeGap){yieldRequests.set(receiver.id,merger.id);requestedSites.add(site);}
+      if(gap<needed+8||passingBeforeGap||merger.rampHelperId===receiver.id){yieldRequests.set(receiver.id,merger.id);requestedSites.add(site);if(merger.onRamp!=null)merger.rampHelperId=receiver.id;}
     }
     const movementSnapshot=trafficSnapshot(this.cars);
     this._stepTrafficIndexes.set(movementSnapshot,trafficIndex(movementSnapshot));
@@ -538,7 +550,7 @@ export class Simulation {
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
       let acceleration = c.acceleration * (1 - (c.v / desired) ** 4 - (wanted / front.gap) ** 2);
       if(yielding&&!c.emergency){
-        const merger=this.cars.find(o=>o.id===request),target=Math.max(.4,Math.min((c.mergeYieldBase??c.v)-2,(merger?.v??c.v)+2));
+        const merger=this.cars.find(o=>o.id===request),target=Math.max(.4,Math.min((c.mergeYieldBase??c.v)-2,(merger?.v??c.v)+(merger?.onRamp!=null?0:2)));
         // Courtesy opens a rolling gap with comfortable braking; following
         // and real obstructions can still require stronger deceleration.
         acceleration=Math.min(acceleration,clamp((target-c.v)*.6,-1.5,c.acceleration));

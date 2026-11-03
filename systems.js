@@ -20,7 +20,7 @@ export class NetworkSystems {
   const limit=s.signalAt(entry,0).speed*.44704;
   return Math.max(0,Math.min(car?.desired??limit,limit,weight?Math.max(2,weighted/weight):limit));
  }
- rampGap(ramp,{time=0,v=ramp.queue[0]?.v??0,traffic=this.rampTraffic(),car=ramp.queue[0],point=ramp.x-ramp.mergeLength}={}){
+ rampGap(ramp,{time=0,v=ramp.queue[0]?.v??0,traffic=this.rampTraffic(),car=ramp.queue[0],point=ramp.x-ramp.mergeLength,cooperative=false}={}){
   const s=this.sim,x=point;
   // Motorway signs guide lane changes after the joining taper; they are not
   // slip-road stop signals. Keep entry available while an onward lane is open.
@@ -36,8 +36,21 @@ export class NetworkSystems {
   }
   // A merge must not make the priority traffic brake for a slower arrival.
   // Evaluate actual speed at transfer, and predicted speed only while planning.
-  if(front&&frontX-front.length-x<8+v*1.2+Math.max(0,v-front.v)*3)return null;
-  if(rear&&x-(car?.length??5)-rearX<8+rear.v*1.5+Math.max(0,rear.v-v)*3)return null;
+  const creeping=cooperative&&v<4&&(rear?.v??0)<4;
+  const frontNeeded=creeping?2+v*.75+Math.max(0,v-(front?.v??v))*1.25:8+v*1.2+Math.max(0,v-(front?.v??v))*3;
+  let rearNeeded=creeping?2+(rear?.v??0)*.75+Math.max(0,(rear?.v??0)-v)*1.25:8+(rear?.v??0)*1.5+Math.max(0,(rear?.v??0)-v)*3;
+  if(cooperative&&time===0&&rear&&car&&rear.yieldingFor===car.id&&rear.a<-.5){
+   // The assigned helper is already braking to create this specific gap.
+   // Use its conservative braking trajectory instead of pretending that it
+   // will keep charging towards a stopped joiner at its original speed.
+   const horizon=car.truck?5.5:4.5,brake=Math.min(1.5,-rear.a)*.8,brakingTime=Math.min(horizon,rear.v/brake);
+   const rearTravel=rear.v*brakingTime-.5*brake*brakingTime*brakingTime;
+   const frontSpace=front?Math.max(0,frontX-front.length-x-2)+front.v*horizon:Infinity;
+   const joinTravel=Math.min(frontSpace,v*horizon+.5*Math.max(.2,(car.acceleration??1)*.6)*horizon*horizon);
+   rearNeeded=Math.min(rearNeeded,4+Math.max(0,rearTravel-joinTravel)+rear.v*.5);
+  }
+  if(front&&frontX-front.length-x<frontNeeded)return null;
+  if(rear&&x-(car?.length??5)-rearX<rearNeeded)return null;
   return {v,frontId:front?.id??null,rearId:rear?.id??null};
  }
  rampArrival(car,distance,target){
@@ -77,7 +90,7 @@ export class NetworkSystems {
    if(distance<25||distance>500)continue;
    const cruise=this.rampCruise(ramp,traffic),arrival=this.rampArrival(c,distance,cruise);
    if(arrival.time<3||arrival.time>20||cruise<8)continue;
-   if(c.accelGap?.target>=Math.max(8,cruise*.6))continue;
+   if(c.mergeRequest===0||c.accelGap?.target>=Math.max(8,cruise*.6))continue;
    // A usable moving gap needs no intervention. Otherwise only a rear driver
    // still well upstream may make a small, voluntary speed adjustment.
    if(this.rampGap(ramp,{car:c,point:entry,time:arrival.time,v:arrival.speed,traffic}))continue;
@@ -110,8 +123,9 @@ export class NetworkSystems {
    if(r.zipperMain!=null){const main=s.cars.find(c=>c.id===r.zipperMain);if(!main||main.x>=entry){r.zipperTurn='ramp';r.zipperMain=null;}}
    if(!c||r.mode!=='open'||entry-c.x>80)continue;
    const rear=traffic.filter(c=>c.x<entry&&c.onRamp==null).sort((a,b)=>b.x-a.x)[0];
-   if(!rear||rear.emergency||rear.v>12||c.v>12)continue;
+   if(!rear)continue;
    if(r.zipperTurn==='main'){r.zipperMain??=rear.id;continue;}
+   if(c.mergeRequest===0||rear.emergency||rear.v>12||c.v>12)continue;
    // Open a rolling gap by easing one rear driver, never by adding a
    // stationary virtual stop line to an otherwise open motorway.
    if(rear.x<entry-c.length-4){
@@ -153,14 +167,17 @@ export class NetworkSystems {
    for(const reduction of [0,1,2,3,5,7,10,14,18]){
     const target=Math.max(2,cruise-reduction),arrival=this.rampArrival(c,distance,target);
     if(arrival.time>45)continue;
-    const gap=this.rampGap(r,{car:c,point,time:arrival.time,v:arrival.speed,traffic});
+    const gap=this.rampGap(r,{car:c,point,time:arrival.time,v:arrival.speed,traffic,cooperative:true});
     if(gap)plans.push({...gap,target});
    }
    const retained=c.accelGap&&plans.find(p=>p.frontId===c.accelGap.frontId&&p.rearId===c.accelGap.rearId);
    c.accelGap=retained&&retained.target>=(plans[0]?.target??0)-2?retained:plans[0];
    c.accelTarget=c.accelGap?.target??Math.min(cruise,Math.sqrt(2*1.5*distance));
-   if(c.x>=r.x-r.mergeLength&&r.mode==='open'&&this.rampGap(r,{car:c,point:c.x,v:c.v,traffic})){
-    c.rampMerging=true;c.rampSteerProgress=0;c.rampSteerDuration=c.truck?5.5:4.5;c.rampMergeStart=c.x;c.mergeHeadwayStart=c.x;c.mergeRequest=null;r.zipperTurn='main';r.zipperMain=null;traffic.push(c);
+   if(c.rampHelperId!=null&&!s.cars.some(o=>o.id===c.rampHelperId&&o.lane===0&&o.onRamp==null&&o.x<c.x-c.length-2))delete c.rampHelperId;
+   const corridorOpen=r.mode==='open'&&!!this.rampGap(r,{car:c,point:c.x,v:0,traffic:[]});
+   c.mergeRequest=corridorOpen&&(c.rampHelperId!=null||!c.accelGap||c.accelTarget<Math.max(8,cruise*.7)||distance<80&&c.v<Math.max(2,cruise*.5))?0:null;
+   if(c.x>=r.x-r.mergeLength&&r.mode==='open'&&this.rampGap(r,{car:c,point:c.x,v:c.v,traffic,cooperative:true})){
+    c.rampMerging=true;c.rampSteerProgress=0;c.rampSteerDuration=c.truck?5.5:4.5;c.rampMergeStart=c.x;c.mergeHeadwayStart=c.x;c.mergeRequest=null;const helper=s.cars.find(o=>o.yieldingFor===c.id);if(helper)s.mergeTurns.set('ramp:'+r.id,{carId:helper.id,x:c.x,lane:0});delete c.rampHelperId;r.zipperTurn='main';r.zipperMain=null;traffic.push(c);
    }
   }
  }
