@@ -2,7 +2,7 @@
 export class NetworkSystems {
  constructor(sim,{length,gantries}){
   this.sim=sim;this.length=length;this.gantries=gantries;
-  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,offStart:x-1750,offLength:850,offDeparture:300,joinTaper:200,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0}));
+  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,offStart:Math.max(0,x-1750),offLength:id===0?340:850,offDeparture:id===0?220:300,joinTaper:200,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0,exited:0}));
   this.phases=[{name:'Normal demand',multiplier:1,duration:90},{name:'Morning rush',multiplier:1.8,duration:180},{name:'Demand easing',multiplier:.75,duration:100},{name:'Stadium traffic',multiplier:2.2,duration:160},{name:'Normal demand',multiplier:1,duration:150}];
   this.phaseIndex=0;this.phase={...this.phases[0],endsAt:90};
   this.work={x:4200,length:150,lanes:[0],announceAt:45,startsAt:150,status:'scheduled',remaining:180,sceneId:null};
@@ -139,12 +139,15 @@ export class NetworkSystems {
  updateOffRamps(){
   const s=this.sim;
   for(const c of s.cars){
+   const previous=c.offRampScanX??c.x-5;c.offRampScanX=c.x;
    if(c.offRamp!=null){const r=this.ramps[c.offRamp];c.offProgress=Math.min(1,Math.max(0,(c.x-r.offStart)/r.offDeparture));continue;}
-   if(c.lane!==0||c.onRamp!=null||c.emergency||c.kind||c.laneChange||c.id%7!==0)continue;
-   const r=this.ramps.find(r=>c.x>=Math.max(0,r.offStart)&&c.x<Math.max(0,r.offStart)+5);
-   if(r){c.offRamp=r.id;c.offProgress=0;}
+   if(c.lane!==0||c.onRamp!=null||c.emergency||c.kind||c.laneChange)continue;
+   // Give each junction its own exit cohort. Detect crossing the start,
+   // rather than requiring a vehicle to land inside a tiny coordinate window.
+   const r=this.ramps.find(r=>(c.id+r.id)%4===0&&previous<=r.offStart&&c.x>=r.offStart);
+   if(r){c.offRamp=r.id;c.offProgress=Math.min(1,Math.max(0,(c.x-r.offStart)/r.offDeparture));}
   }
-  s.cars=s.cars.filter(c=>{if(c.offRamp==null||c.x<this.ramps[c.offRamp].offStart+this.ramps[c.offRamp].offLength)return true;s.exits.push(s.elapsed);this.recordExit(c);return false;});
+  s.cars=s.cars.filter(c=>{if(c.offRamp==null||c.x<this.ramps[c.offRamp].offStart+this.ramps[c.offRamp].offLength)return true;this.ramps[c.offRamp].exited++;s.exits.push(s.elapsed);this.recordExit(c);return false;});
  }
 
  // Drive along the acceleration lane, then reserve the running lane only

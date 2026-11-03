@@ -65,7 +65,7 @@ export function roadworkCones(geometry,work){
 // First move into a parallel deceleration lane, then leave along the ramp.
 export function offRampPoint(geometry,ramp,worldX){
  const start=ramp.offStart??ramp.x-1750,length=ramp.offLength??850,depart=ramp.offDeparture??300;
- const travelled=Math.max(0,worldX-start),parallel=geometry.laneWidth*.725,split=length*.6;
+ const travelled=Math.max(0,worldX-start),parallel=geometry.laneWidth*.725,split=Math.max(length*.6,depart);
  const smooth=t=>t*t*(3-2*t),slope=t=>6*t*(1-t);
  let offset,rate;
  if(travelled<depart){const t=travelled/depart;offset=parallel*smooth(t);rate=parallel*slope(t)/depart;}
