@@ -203,3 +203,31 @@ test('a stopped joiner at every junction receives a lasting gap request until it
   assert(finished!=null&&finished<(truck?35:25),r.name+' remained stuck despite continuous safe gap assistance');assert(c.x>point);assert.equal(c.slipRamp,null);
  }
 });
+test('G06 roadworks do not strand open-lane leaders behind a virtual gantry gate',()=>{
+ for(const seed of [17,71]){
+  const s=new Simulation(seeded(seed)),o=s.systems;s.nextIncident=s.nextEmergency=Infinity;o.roadblock.startsAt=o.phase.endsAt=Infinity;o.phase.multiplier=1.8;
+  s.signals[1][0].mode='closed';s.signals[1][1].speed=s.signals[1][2].speed=50;s.signals[2].forEach(a=>a.speed=40);
+  s.signals[3][0].speed=s.signals[3][1].speed=30;s.signals[3][2].mode='merge-left';
+  s.signals[4][0].speed=30;s.signals[4][1].mode='merge-left';s.signals[4][2].mode='closed';s.signals[5][1].mode=s.signals[5][2].mode='closed';
+  o.work={...o.work,x:7200,lanes:[1,2],status:'working',startsAt:0,announceAt:0,sceneId:900,remaining:Infinity};
+  // An already active work site starts with its protected zone clear.
+  s.cars=s.cars.filter(c=>!s.occupiedLanes(c).some(l=>[1,2].includes(l))||c.x<6750||c.x-c.length>7250);
+  s.incidents=[{id:900,type:'roadworks',lane:1,x:7200,length:400,bodies:[1,2].map(lane=>({lane,x:7200,length:400})),clearsAt:Infinity}];
+  let crossings=0,stoppedSeconds=0;const clearStops=new Map();
+  for(let n=0;n<6000;n++){
+   const before=new Map(s.cars.map(c=>[c.id,c.x]));s.step(.1);
+   for(const c of s.cars){
+    assert(c.x>=(before.get(c.id)??c.x)-1e-7);
+    if(n>=1200){
+     if(before.get(c.id)<6450&&c.x>=6450&&c.lane===0)crossings++;
+     if(c.x>6000&&c.x<6450&&c.lane===0&&c.v<.1)stoppedSeconds+=.1;
+     const clear=c.x>6000&&c.x<6450&&c.lane===0&&c.v<.1&&!c.laneChange&&c.yieldingFor==null&&c.restart<=0&&s.obstacle(c,0).gap>20;
+     clearStops.set(c.id,clear?(clearStops.get(c.id)??0)+.1:0);
+     assert((clearStops.get(c.id)??0)<6,'open-lane leader remained stopped with a clear road ahead');
+    }
+   }
+   if(n%50===0)safe(s);
+  }
+  assert(crossings>=75,'single open lane failed to discharge traffic');assert(stoppedSeconds<100,'G06 developed excessive stop-and-restart loss: '+stoppedSeconds);
+ }
+});

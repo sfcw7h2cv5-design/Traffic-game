@@ -173,11 +173,11 @@ export class NetworkSystems {
    const retained=c.accelGap&&plans.find(p=>p.frontId===c.accelGap.frontId&&p.rearId===c.accelGap.rearId);
    c.accelGap=retained&&retained.target>=(plans[0]?.target??0)-2?retained:plans[0];
    c.accelTarget=c.accelGap?.target??Math.min(cruise,Math.sqrt(2*1.5*distance));
-   if(c.rampHelperId!=null&&!s.cars.some(o=>o.id===c.rampHelperId&&o.lane===0&&o.onRamp==null&&o.x<c.x-c.length-2))delete c.rampHelperId;
+   if(c.mergeHelperId!=null&&!s.cars.some(o=>o.id===c.mergeHelperId&&o.lane===0&&o.onRamp==null&&o.x<c.x-c.length-2))delete c.mergeHelperId;
    const corridorOpen=r.mode==='open'&&!!this.rampGap(r,{car:c,point:c.x,v:0,traffic:[]});
-   c.mergeRequest=corridorOpen&&(c.rampHelperId!=null||!c.accelGap||c.accelTarget<Math.max(8,cruise*.7)||distance<80&&c.v<Math.max(2,cruise*.5))?0:null;
+   c.mergeRequest=corridorOpen&&(c.mergeHelperId!=null||!c.accelGap||c.accelTarget<Math.max(8,cruise*.7)||distance<80&&c.v<Math.max(2,cruise*.5))?0:null;
    if(c.x>=r.x-r.mergeLength&&r.mode==='open'&&this.rampGap(r,{car:c,point:c.x,v:c.v,traffic,cooperative:true})){
-    c.rampMerging=true;c.rampSteerProgress=0;c.rampSteerDuration=c.truck?5.5:4.5;c.rampMergeStart=c.x;c.mergeHeadwayStart=c.x;c.mergeRequest=null;const helper=s.cars.find(o=>o.yieldingFor===c.id);if(helper)s.mergeTurns.set('ramp:'+r.id,{carId:helper.id,x:c.x,lane:0});delete c.rampHelperId;r.zipperTurn='main';r.zipperMain=null;traffic.push(c);
+    c.rampMerging=true;c.rampSteerProgress=0;c.rampSteerDuration=c.truck?5.5:4.5;c.rampMergeStart=c.x;c.mergeHeadwayStart=c.x;c.mergeRequest=null;const helper=s.cars.find(o=>o.yieldingFor===c.id);if(helper)s.mergeTurns.set('ramp:'+r.id,{carId:helper.id,x:c.x,lane:0});delete c.mergeHelperId;r.zipperTurn='main';r.zipperMain=null;traffic.push(c);
    }
   }
  }

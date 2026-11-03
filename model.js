@@ -1,4 +1,4 @@
-import {NetworkSystems} from './systems.js?v=33';
+import {NetworkSystems} from './systems.js?v=34';
 export const LENGTH = 10000;
 // Keep the clipped top edge clear of incidents: outflow is always free.
 export const EXIT_CLEAR_START = LENGTH - 500;
@@ -202,6 +202,17 @@ export class Simulation {
     this.cars=this.cars.filter(c=>!victims.includes(c));this.incidents.push(incident);
     this.lastEvent=`${type==='pile-up'?'Multi-vehicle collision':'Shed load'} · Lanes ${lanes.map(l=>l+1).join(' & ')} · ${(x/1000).toFixed(2)} km. Protect both lanes upstream.`;this.eventId++;
     return incident;
+  }
+  mergeFlowTarget(car,lane,traffic){
+    let front=null,rear=null;
+    for(const other of traffic){
+      if(other.id===car.id||!vehicleLanes(other).includes(lane))continue;
+      if(other.x>=car.x&&other.x-car.x<250&&(!front||other.x<front.x))front=other;
+      if(other.x<car.x&&car.x-other.x<150&&(!rear||other.x>rear.x))rear=other;
+    }
+    const posted=this.signalAt(car.x,lane).speed*.44704;
+    const flow=front&&rear?(front.v*2+rear.v)/3:(front??rear)?.v??posted;
+    return Math.max(2,Math.min(posted,flow));
   }
   usableArrowRoute(x,lane,source){
     const visited=new Set([source]);
@@ -408,6 +419,7 @@ export class Simulation {
       if(boundaryTransition&&c.evacuationGoal!=null&&this.signals[upcoming][c.evacuationGoal].mode==='open')c.transitionGantry=upcoming;
       const evacuationSteps=c.evacuationGoal!=null&&c.evacuationGoal!==c.lane?[c.lane+Math.sign(c.evacuationGoal-c.lane)]:[];
       c.mergeRequest=evacuationSteps.length&&!c.laneChange&&Math.abs(c.visualLane-c.lane)<=.02?evacuationSteps[0]:null;
+      if(c.mergeRequest==null)delete c.mergeHelperId;
       if (c.decision <= 0 && (c.cooldown <= 0 || forced || approachingSiren || c.emergency) && !c.laneChange && Math.abs(c.visualLane - c.lane) <= .02) {
         c.decision = (c.emergency||approachingSiren)?.25+this.random()*.25:.7+this.random()*.8;
         let target = c.lane;
@@ -466,11 +478,15 @@ export class Simulation {
         }
         if (target !== c.lane) {
           if(forced){
+            // The safe-gap check has accepted a short cooperative merge.
+            // Keep that gap initially, then open normal following distance
+            // gradually, instead of immediately braking for a larger gap.
+            c.mergeHeadwayStart=c.x;c.mergeHeadwayMin=1;c.mergeHeadwayDistance=300;
             const receiver=this.cars.find(o=>o.yieldingFor===c.id&&o.lane===target);
             if(receiver)this.mergeTurns.set(this.mergeSite(c,target),{carId:receiver.id,x:c.x,lane:target});
           }
           c.laneChange={from:c.visualLane,to:target,progress:0,duration:c.truck?5.5:4.5};
-          c.fromLane = c.lane; c.lane = target; c.cooldown = 8 + this.random() * 4;c.mergeRequest=null;
+          c.fromLane = c.lane; c.lane = target; c.cooldown = 8 + this.random() * 4;c.mergeRequest=null;delete c.mergeHelperId;
         }
       }
     }
@@ -484,11 +500,12 @@ export class Simulation {
       if(requestedSites.has(site))continue;
       const ahead=this.obstacle(merger,merger.mergeRequest);
       if(ahead.gap<(merger.v<2?2:6+merger.v*.85))continue;
-      let receiver=merger.onRamp!=null?this.cars.find(c=>c.id===merger.rampHelperId&&c.lane===merger.mergeRequest&&c.x<merger.x-merger.length-2):null;
+      let receiver=this.cars.find(c=>c.id===merger.mergeHelperId&&!c.emergency&&c.onRamp==null&&c.offRamp==null&&c.lane===merger.mergeRequest&&c.x<merger.x-merger.length-2);
       for(const c of receiver?[]:this.cars){
         if(c.id===merger.id||c.emergency||c.onRamp!=null||c.offRamp!=null||c.lane!==merger.mergeRequest||c.x>=merger.x-merger.length-2||merger.x-c.x>350)continue;
-        const gap=merger.x-merger.length-c.x,target=Math.max(.5,merger.v+(merger.onRamp!=null?0:2));
-        const neededToEase=c.v>merger.v+5?Math.max(12,(c.v*c.v-target*target)/(2*1.5)+c.v*.5):2;
+        const gap=merger.x-merger.length-c.x,target=Math.max(.5,merger.v+(merger.onRamp!=null?0:1));
+        // A stopped merger needs room for braking response as well as distance.
+        const neededToEase=c.v>merger.v+5?Math.max(12,(c.v*c.v-target*target)/(2*1.5)+c.v*(merger.v<2?2.5:.5)):2;
         if(gap<neededToEase)continue;
         if(!receiver||c.x>receiver.x)receiver=c;
       }
@@ -496,11 +513,11 @@ export class Simulation {
       // A vehicle alongside the merger will pass first; don't slow somebody
       // behind that vehicle to reserve a gap the merger cannot yet reach.
       const alongside=this.cars.some(c=>c.id!==merger.id&&c.id!==receiver.id&&this.occupiedLanes(c).includes(merger.mergeRequest)&&c.x>=merger.x-merger.length-2&&c.x-c.length<=merger.x+2);
-      if(alongside&&merger.onRamp==null)continue;
+      if(alongside&&merger.onRamp==null&&merger.mergeHelperId!==receiver.id)continue;
       const gap=merger.x-merger.length-receiver.x;
       const needed=5+receiver.v*.9+Math.max(0,receiver.v-merger.v)*2;
       const passingBeforeGap=this.cars.some(c=>c.id!==merger.id&&c.id!==receiver.id&&this.occupiedLanes(c).includes(merger.mergeRequest)&&c.x>receiver.x&&c.x<merger.x);
-      if(gap<needed+8||passingBeforeGap||merger.rampHelperId===receiver.id){yieldRequests.set(receiver.id,merger.id);requestedSites.add(site);if(merger.onRamp!=null)merger.rampHelperId=receiver.id;}
+      if(gap<needed+8||passingBeforeGap||merger.mergeHelperId===receiver.id){yieldRequests.set(receiver.id,merger.id);requestedSites.add(site);merger.mergeHelperId=receiver.id;}
     }
     const movementSnapshot=trafficSnapshot(this.cars);
     this._stepTrafficIndexes.set(movementSnapshot,trafficIndex(movementSnapshot));
@@ -544,16 +561,25 @@ export class Simulation {
 
       // A driver initially accepts the checked joining gap, then opens their
       // normal following distance progressively along the acceleration lane.
-      const mergeHeadway=c.mergeHeadwayStart!=null?Math.min(c.headway,1.2)+(c.headway-Math.min(c.headway,1.2))*clamp((c.x-c.mergeHeadwayStart)/600,0,1):c.headway;
+      const initialHeadway=Math.min(c.headway,c.mergeHeadwayMin??1.2);
+      const mergeHeadway=c.mergeHeadwayStart!=null?initialHeadway+(c.headway-initialHeadway)*clamp((c.x-c.mergeHeadwayStart)/(c.mergeHeadwayDistance??600),0,1):c.headway;
       const headway = mergeHeadway * (rain ? 1.35 : unruly ? .65 : 1);
       const closing = c.v - front.speed;
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
       let acceleration = c.acceleration * (1 - (c.v / desired) ** 4 - (wanted / front.gap) ** 2);
       if(yielding&&!c.emergency){
-        const merger=this.cars.find(o=>o.id===request),target=Math.max(.4,Math.min((c.mergeYieldBase??c.v)-2,(merger?.v??c.v)+(merger?.onRamp!=null?0:2)));
+        const merger=this.cars.find(o=>o.id===request);
+        const target=Math.max(.4,Math.min((c.mergeYieldBase??c.v)-2,(merger?.v??c.v)+(merger?.onRamp!=null?0:1)));
         // Courtesy opens a rolling gap with comfortable braking; following
         // and real obstructions can still require stronger deceleration.
         acceleration=Math.min(acceleration,clamp((target-c.v)*.6,-1.5,c.acceleration));
+      }
+      if(c.mergeRequest!=null&&c.onRamp==null&&!c.laneChange){
+        // Match the lane being joined while still looking for a gap. Holding
+        // the source lane's higher speed until the red X creates a needless
+        // stop, then inserts a stationary car into an otherwise moving queue.
+        const target=this.mergeFlowTarget(c,c.mergeRequest,movementSnapshot);
+        acceleration=Math.min(acceleration,clamp((target-c.v)*.5,-1.5,c.acceleration));
       }
       // Each stopped driver waits their own reaction time as the queue releases.
       if (c.v < .4 && front.speed < .3 && front.gap < 5.5) c.restart = c.reaction;

@@ -107,3 +107,26 @@ test('a reopening gantry adds no stop to the remaining open motorway lane',()=>{
  }
  assert.equal(crossed.size,cars.length);assert(cars.every(c=>c.x>boundary+400));
 });
+test('G05 left-arrow traffic matches the 30 mph stream before G06 instead of stopping at its red X',()=>{
+ for(const truck of [false,true]){
+  const s=setup();s.signals[4][0].speed=30;s.signals[4][1].mode='merge-left';s.signals[4][2].mode='closed';s.signals[5][1].mode=s.signals[5][2].mode='closed';
+  for(let x=5000;x<7000;x+=45){const a=driver(s,0,x,12);Object.assign(a,{desired:12,v:12,headway:1.2,cooldown:Infinity,decision:Infinity});}
+  const c=driver(s,1,5400,25);Object.assign(c,{truck,length:truck?16.5:4.7,desired:25,v:25,acceleration:truck?.7:1.3});
+  let mergedAt=null,worst=0;
+  for(let n=0;n<1200&&c.x<6500;n++){
+   stepSafe(s);assert(c.v>5,'moving merge was converted into a red-X stop');worst=Math.min(worst,c.a);
+   if(c.lane===0&&mergedAt==null)mergedAt=c.x;
+  }
+  assert(mergedAt!=null&&mergedAt<6000,'driver waited until the gantry to merge');assert(c.x>=6500);assert(worst>-2.5,'checked merge gap caused an artificial hard-braking pulse');
+ }
+});
+test('a driver already stopped below G06 receives a persistent safe merge gap',()=>{
+ for(const truck of [false,true]){
+  const s=setup();s.signals[4][0].speed=30;s.signals[4][1].mode='merge-left';s.signals[4][2].mode='closed';s.signals[5][1].mode=s.signals[5][2].mode='closed';
+  for(let x=5000;x<7000;x+=45){const a=driver(s,0,x,12);Object.assign(a,{desired:12,v:12,headway:1.2,cooldown:Infinity,decision:Infinity});}
+  const c=driver(s,1,6438.5,0);Object.assign(c,{truck,length:truck?16.5:4.7,desired:25,v:0,acceleration:truck?.7:1.3});
+  let mergeTime=null;
+  for(let n=0;n<600&&c.x<6500;n++){stepSafe(s);if(c.lane===0&&mergeTime==null)mergeTime=(n+1)/10;}
+  assert(mergeTime!=null&&mergeTime<25,'stopped red-X driver remained stranded while the open lane flowed');assert(c.x>=6500);
+ }
+});
