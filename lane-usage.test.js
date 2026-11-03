@@ -71,3 +71,14 @@ test('G02 arrow and G03 lane-1 closure share traffic across the two open lanes',
  }
  assert(stopped<200,'closure produced sustained gridlock in the open middle lane');assert(outside>15000,'outside lane was not used');assert(crossed>130,'closure flow stalled');
 });
+
+test('a faster car returning ahead does not provoke the overtaken driver to move right',()=>{
+ for(const lane of [0,1])for(const merging of [false,true])for(const desired of [22,30]){
+  const s=new Simulation(seeded());quiet(s);s.cars=[];
+  const c=s.spawn(lane,2200,22),passing=s.spawn(lane,2255,28);
+  Object.assign(c,{truck:false,length:4.7,desired,courtesy:1,reaction:1,headway:2,cooldown:0,decision:0});
+  Object.assign(passing,{truck:false,length:4.7,desired:30,courtesy:1,cooldown:Infinity,decision:Infinity});
+  if(merging){passing.visualLane=lane+1;passing.fromLane=lane+1;passing.laneChange={from:lane+1,to:lane,progress:0,duration:4.5};}
+  for(let n=0;n<150;n++){s.step(.1);assert(c.lane<=lane,'overtaken car moved right behind a faster vehicle');separated(s);}
+ }
+});

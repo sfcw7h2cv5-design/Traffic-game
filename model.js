@@ -1,4 +1,4 @@
-import {NetworkSystems} from './systems.js?v=35';
+import {NetworkSystems} from './systems.js?v=36';
 export const LENGTH = 10000;
 // Keep the clipped top edge clear of incidents: outflow is always free.
 export const EXIT_CLEAR_START = LENGTH - 500;
@@ -465,8 +465,10 @@ export class Simulation {
             if (!crowdedLeft&&(gap.gap > Math.max(120, c.v * 8) || gap.speed >= targetSpeed - 1)) target = left;
           }
           const targetSpeed=Math.min(c.desired,this.speedTarget(c));
-          const catching = front.gap < Math.max(95, c.v * 5.5) && front.speed < targetSpeed - .7;
-          const followingPressure = front.gap < Math.max(45,3.5+c.v*c.headway*1.8);
+          const catching = front.gap < Math.max(95, c.v * 5.5) && front.speed < Math.min(targetSpeed - .7,c.v + .5);
+          // A short gap after being overtaken is not a reason to pass a
+          // faster vehicle that is already pulling away.
+          const followingPressure = front.gap < Math.max(45,3.5+c.v*c.headway*1.8) && front.speed < Math.min(targetSpeed - .7,c.v + .5);
           if(c.emergency&&target===c.lane&&catching){
             const options=[c.lane-1,c.lane+1].filter(safe).sort((a,b)=>this.obstacle(c,b).gap-this.obstacle(c,a).gap);
             if(options.length)target=options[0];
