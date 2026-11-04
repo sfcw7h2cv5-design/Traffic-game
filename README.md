@@ -92,3 +92,13 @@ Off ramps register a vehicle crossing the start of their deceleration lane even 
 An ordinary driver does not move right solely because an overtaking vehicle has returned ahead at a short gap. Passing requires a slower leader relative to the driver's target speed which is not pulling away; a faster vehicle pulling away is followed normally. Mandatory closure merges, emergency yielding and junction courtesy still take priority.
 
 The extended network has 14 gantries and six junctions across 20 km. The original gantries G01–G07 and junctions J1–J3 retain their distances, with G08–G14 and J4–J6 added downstream. The road curve repeats smoothly after 10 km. Roadworks cycle through 4.2, 7.2, 14.2 and 17.2 km; random incidents cover both halves while the final 500 m remains clear. The taller overview keeps the previous road scale and touch spacing; Detail remains a 400 m view with upstream/downstream navigation.
+
+## Automatic shifts, warning boards and changing conditions
+
+Automatic shifts follow the existing demand phases, with live targets for vehicles served and a report of delay, harsh braking and a score after each shift. No challenge selector or start action is required, and the report never ends the game. Longer-term milestones remain automatic too.
+
+Each gantry has an advance warning board. Automatic messages identify actual queues (at least three slow vehicles), incidents and closed junction entries downstream, plus wet roads or fog. Messages clear when the condition passes. A gantry's editor can override its board or restore Automatic. Warnings encourage gradual speed changes, respecting posted limits and physical lane closures, and never add an invisible stop line.
+
+The shift clock covers a full day over 1,200 simulated seconds. Light moves through day, twilight and night; rain and fog build and clear gradually. Wetness and visibility affect desired speeds and following gaps. Cautious, unhurried, steady and confident drivers have coherent differences in pace, reaction, following distance and acceleration; loaded and cruising HGVs differ too. Emergency vehicle behavior is retained.
+
+Night uses a darker road with legible signals. Overview lights remain within the existing compact vehicle marks; Detail adds separate white headlights and red rear lights, brighter under braking. Weather and light use simulation time, so pausing holds them still. The fixed 20 km layout is unchanged.

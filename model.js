@@ -1,4 +1,5 @@
-import {NetworkSystems} from './systems.js?v=37';
+import {driverProfile} from './experience.js?v=38';
+import {NetworkSystems} from './systems.js?v=38';
 export const LENGTH = 20000;
 // Keep the clipped top edge clear of incidents: outflow is always free.
 export const EXIT_CLEAR_START = LENGTH - 500;
@@ -83,6 +84,7 @@ export class Simulation {
       cooldown: this.random() * 4, decision: this.random(),
       restart: 0, a: 0, braking: false, laneChange: null, laneChangeRate: 0,
     };
+    if(!kind){const p=driverProfile(car.id,truck);car.driverStyle=p.name;car.desired*=p.pace;car.headway*=p.gap;car.reaction*=p.response;car.acceleration*=p.power;}
     if(kind==='roadblock'){car.desired=9;car.acceleration=.8;}
     if(car.emergency){car.desired=(kind==='police'?110:100)*.44704;car.acceleration=3;car.headway=1.1;car.reaction=.35;car.courtesy=1;car.cooldown=0;car.decision=0;}
     if(kind==='recovery'){car.desired=24;car.acceleration=.8;}
@@ -366,7 +368,8 @@ export class Simulation {
     }
     this._stepIncidentBodies=this.incidentBodies();
     this._stepTrafficIndexes=new Map();
-    const rain = this.scenario === 'rain';
+    const atmosphere=this.systemsEnabled&&this.systems.experience.enabled?this.systems.experience.environment:{wetness:0,fog:0};
+    const wetness=this.scenario==='rain'?1:atmosphere.wetness;const rain=wetness>0;const fog=atmosphere.fog;
     // Freeze all leader positions/speeds for this step. Updating leaders first
     // makes followers react instantly and produces artificial synchronised motion.
     const snapshot=trafficSnapshot(this.cars);
@@ -460,11 +463,11 @@ export class Simulation {
           const left = c.lane - 1;
           if (target===c.lane && !c.emergency && left >= 0 && !(c.x<(c.rampClearUntilX??-Infinity)) && safe(left)) {
             const gap = this.obstacle(c, left, snapshot);
-            const targetSpeed=Math.min(c.desired,this.speedTarget(c));
+            const targetSpeed=Math.min(c.desired*(1-wetness*.18-fog*.18),this.speedTarget(c),this.systemsEnabled?this.systems.experience.warningSpeed(c):Infinity);
             const crowdedLeft=c.v<22&&gap.gap<Math.max(80,c.v*(c.headway+4));
             if (!crowdedLeft&&(gap.gap > Math.max(120, c.v * 8) || gap.speed >= targetSpeed - 1)) target = left;
           }
-          const targetSpeed=Math.min(c.desired,this.speedTarget(c));
+          const targetSpeed=Math.min(c.desired*(1-wetness*.18-fog*.18),this.speedTarget(c),this.systemsEnabled?this.systems.experience.warningSpeed(c):Infinity);
           const catching = front.gap < Math.max(95, c.v * 5.5) && front.speed < Math.min(targetSpeed - .7,c.v + .5);
           // A short gap after being overtaken is not a reason to pass a
           // faster vehicle that is already pulling away.
@@ -548,7 +551,8 @@ export class Simulation {
       }
       const unruly = this.scenario === 'reckless' && c.reckless;
       const limit = this.speedTarget(c);
-      let desired = Math.max(3, Math.min(c.desired * (rain ? .82 : 1), limit * c.courtesy * (unruly ? 1.15 : 1)));
+      let desired = Math.max(3, Math.min(c.desired * (1-wetness*.18-fog*.18), limit * c.courtesy * (unruly ? 1.15 : 1)));
+      if(this.systemsEnabled)desired=Math.min(desired,this.systems.experience.warningSpeed(c));
       if(!c.emergency&&c.lane===0&&c.x<(c.rampYieldEntry??-Infinity)&&this.elapsed<(c.rampYieldUntil??-Infinity))desired=Math.min(desired,Math.max(4,c.rampYieldTargetSpeed??desired));
       if(!c.emergency&&c.zipperYieldTarget!=null)desired=Math.min(desired,c.zipperYieldTarget);
       if(c.onRamp!=null&&!c.rampMerging)desired=Math.min(desired,c.accelTarget??desired);
@@ -565,7 +569,7 @@ export class Simulation {
       // normal following distance progressively along the acceleration lane.
       const initialHeadway=Math.min(c.headway,c.mergeHeadwayMin??1.2);
       const mergeHeadway=c.mergeHeadwayStart!=null?initialHeadway+(c.headway-initialHeadway)*clamp((c.x-c.mergeHeadwayStart)/(c.mergeHeadwayDistance??600),0,1):c.headway;
-      const headway = mergeHeadway * (rain ? 1.35 : unruly ? .65 : 1);
+      const headway = mergeHeadway * (1+wetness*.35+fog*.35) * (unruly ? .65 : 1);
       const closing = c.v - front.speed;
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
       let acceleration = c.acceleration * (1 - (c.v / desired) ** 4 - (wanted / front.gap) ** 2);
@@ -618,6 +622,6 @@ export class Simulation {
     this.exits = this.exits.filter(t => t > this.elapsed - 60);
     this.hardBrakeEvents=this.hardBrakeEvents.filter(t=>t>this.elapsed-60);
     this._stepIncidentBodies=null;this._stepTrafficIndexes=null;
-    if(this.systemsEnabled)this.systems.afterStep();
+    if(this.systemsEnabled)this.systems.afterStep(dt);
   }
 }

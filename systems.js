@@ -1,3 +1,4 @@
+import {ShiftExperience} from './experience.js?v=38';
 // Scheduled network operations share the same individual-vehicle traffic model.
 export class NetworkSystems {
  constructor(sim,{length,gantries}){
@@ -8,6 +9,7 @@ export class NetworkSystems {
   this.work={x:4200,length:150,lanes:[0],announceAt:45,startsAt:150,status:'scheduled',remaining:180,sceneId:null};
   this.roadblock={status:'scheduled',startsAt:110,x:1000,length:80,vehicleIds:[],sceneId:null,workEndsAt:null};
   this.totalExited=0;this.ambulancesExited=0;this.completedWorks=0;this.queueSeen=false;this.queueSeenAt=0;
+  this.experience=new ShiftExperience(sim,this);
   this.objectives=[{id:'flow',title:'Serve 100 vehicles',target:100,progress:0,complete:false},{id:'ambulance',title:'Get an ambulance through',target:1,progress:0,complete:false},{id:'queue',title:'Clear a queue of 5+ vehicles',target:1,progress:0,complete:false},{id:'works',title:'Complete protected roadworks',target:1,progress:0,complete:false}];
  }
  announce(text){this.sim.lastEvent=text;this.sim.eventId++;}
@@ -280,11 +282,13 @@ export class NetworkSystems {
  }
  beforeStep(dt){
   const s=this.sim;
-  if(s.elapsed>=this.phase.endsAt){this.phaseIndex=(this.phaseIndex+1)%this.phases.length;this.phase={...this.phases[this.phaseIndex],endsAt:s.elapsed+this.phases[this.phaseIndex].duration};this.announce(this.phase.name+' · entry and junction demand are changing.');}
+  if(s.elapsed>=this.phase.endsAt){this.experience.finishShift();this.phaseIndex=(this.phaseIndex+1)%this.phases.length;this.phase={...this.phases[this.phaseIndex],endsAt:s.elapsed+this.phases[this.phaseIndex].duration};if(this.experience.environment.darkness>.8){if(this.phase.name==='Morning rush')this.phase.name='Late traffic surge';else if(this.phase.name==='Normal demand')this.phase.name='Night traffic';}this.experience.startShift();this.announce(this.phase.name+' · entry and junction demand are changing.');}
+  this.experience.beforeStep();
   this.updateZipper();this.updateOffRamps();this.prepareRampMerges(dt);this.updateRamps(dt);this.updateRampCourtesy();this.updateWorks(dt);this.updateRoadblock();
  }
- recordExit(c){this.totalExited++;if(c.kind==='ambulance')this.ambulancesExited++;}
- afterStep(){
+ recordExit(c){this.totalExited++;this.experience.recordExit();if(c.kind==='ambulance')this.ambulancesExited++;}
+ afterStep(dt=.1){
+  this.experience.afterStep(dt);
   this.releaseRamps();
   const stopped=this.sim.cars.filter(c=>c.lane>=0&&!c.emergency&&c.v<.5).length;
   if(stopped>=5&&!this.queueSeen){this.queueSeen=true;this.queueSeenAt=this.sim.elapsed;}
