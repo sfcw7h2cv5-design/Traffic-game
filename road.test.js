@@ -5,11 +5,11 @@ import {layoutSprites} from './display.js';
 import {Simulation,LENGTH,GANTRIES} from './model.js';
 test('narrow curved carriageway and every sign target stay inside mobile and desktop maps',()=>{
  for(const width of [320,390,844,1440]){
-  const g=createRoadGeometry(width,1055,LENGTH);assert(g.roadWidth<=width*.4);
+  const g=createRoadGeometry(width,2110,LENGTH);assert(g.roadWidth<=width*.4);
   const centers=[];
   for(let x=0;x<=LENGTH;x+=50){centers.push(g.center(x));assert(g.leftAt(x)>0);assert(g.leftAt(x)+g.roadWidth<width);assert(Number.isFinite(g.angleAt(x)));}
   assert(Math.max(...centers)-Math.min(...centers)>20);
-  for(const x of GANTRIES){assert(g.leftAt(x)-51>=0);assert(g.project(x)>=20&&g.project(x)<=1035);}
+  for(const x of GANTRIES){assert(g.leftAt(x)-51>=0);assert(g.project(x)>=20&&g.project(x)<=g.height-20);}
  }
 });
 test('vehicles and lane-sign tap targets share the same curved coordinates',()=>{
@@ -95,7 +95,7 @@ test('off ramps diverge smoothly into a deceleration lane before the exit',()=>{
 test('slip roads stay gradual and exits precede entries without crossing',async()=>{
  const {offRampPoint}=await import('./road.js');
  for(const width of [320,390,844,1440]){
-  const s=new Simulation(()=>.5),g=createRoadGeometry(width,1200,LENGTH);
+  const s=new Simulation(()=>.5),g=createRoadGeometry(width,2400,LENGTH);
   for(const r of s.systems.ramps){
    assert(r.offStart+r.offLength>0);assert(r.offStart+r.offLength<r.x-r.mergeLength);
    for(let n=0;n<=1000;n++){
@@ -111,7 +111,7 @@ test('slip roads stay gradual and exits precede entries without crossing',async(
 });
 test('acceleration and deceleration sections run parallel beside the motorway',()=>{
  for(const width of [320,390,844,1440]){
-  const g=createRoadGeometry(width,1200,LENGTH),r=new Simulation(()=>.5).systems.ramps[1];
+  const g=createRoadGeometry(width,2400,LENGTH),r=new Simulation(()=>.5).systems.ramps[1];
   const on=[r.x-r.mergeLength+20,r.x-r.joinTaper-20].map(x=>slipRoadPoint(g,r,x).x-g.leftAt(x));
   const off=[r.offStart+r.offDeparture+20,r.offStart+r.offLength*.6-20].map(x=>offRampPoint(g,r,x).x-g.leftAt(x));
   assert(Math.abs(on[0]-on[1])<1e-7);assert(Math.abs(off[0]-off[1])<1e-7);assert(on[0]<0&&off[0]<0);

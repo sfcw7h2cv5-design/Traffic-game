@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {Simulation,GANTRIES} from './model.js';
+import {Simulation,GANTRIES,LENGTH} from './model.js';
 function seeded(seed=17){let n=seed;return()=>((n=(n*1664525+1013904223)>>>0)/4294967296);}
 function setup(){
  const s=new Simulation(seeded());s.cars=[];s.incidents=[];s.nextArrival=s.nextEmergency=s.nextIncident=Infinity;s.waiting=0;
@@ -55,7 +55,7 @@ test('automatic rush hour and stadium surges change demand without user scenario
  o.phase.endsAt=0;run(s,.1);assert.equal(o.phase.name,'Stadium traffic');assert(o.phase.multiplier>=2);
 });
 test('optional shift goals track real exits and cleared queues without ending the simulation',()=>{
- const s=setup(),o=s.systems;s.spawn(2,9999,35,'ambulance');run(s,1);
+ const s=setup(),o=s.systems;s.spawn(2,LENGTH-1,35,'ambulance');run(s,1);
  assert(o.objectives.find(x=>x.id==='ambulance').complete);assert.equal(o.totalExited,1);
  s.cars=[];for(let i=0;i<5;i++){const c=s.spawn(0,3000+i*25,0);c.desired=.01;c.cooldown=Infinity;c.decision=Infinity;}
  run(s,.1);assert(o.queueSeen);s.cars=[];run(s,22);
@@ -108,7 +108,7 @@ function assertSafeStep(s,lengths){
  }
 }
 test('all open slip roads join and leave lane 1 for current or approaching closures and arrows',()=>{
- for(const rampId of [0,1,2])for(const mode of ['closed','merge-right'])for(const approach of [false,true]){
+ for(const rampId of [0,1,2,3,4,5])for(const mode of ['closed','merge-right'])for(const approach of [false,true]){
   const s=setup(),r=s.systems.ramps[rampId],entry=r.x-r.mergeLength;
   const g=approach?GANTRIES.findIndex(x=>x>entry):GANTRIES.findLastIndex(x=>x<=entry);
   if(g<0)continue;
@@ -122,7 +122,7 @@ test('all open slip roads join and leave lane 1 for current or approaching closu
  }
 });
 test('slip-road traffic can traverse two adjacent closures into the remaining open lane',()=>{
- for(const rampId of [0,1,2]){
+ for(const rampId of [0,1,2,3,4,5]){
   const s=setup(),r=s.systems.ramps[rampId],current=GANTRIES.findLastIndex(x=>x<=r.x-r.mergeLength);
   for(let g=current;g<GANTRIES.length;g++)for(const lane of [0,1])s.signals[g][lane].mode='closed';
   const c=queuedCar(s,r),traffic=s.spawn(2,r.x+180,20);
@@ -132,7 +132,7 @@ test('slip-road traffic can traverse two adjacent closures into the remaining op
  }
 });
 test('the slip-road emergency closure still holds independently of motorway signs',()=>{
- for(const rampId of [0,1,2]){
+ for(const rampId of [0,1,2,3,4,5]){
   const s=setup(),r=s.systems.ramps[rampId],c=queuedCar(s,r),start=c.x;
   for(const signs of s.signals)signs[0].mode='closed';
   s.systems.setRampMode(rampId,'closed');run(s,10);
@@ -154,9 +154,9 @@ test('incidents behind or beyond the joining taper do not act as slip-road stop 
  }
 });
 test('all-lane closures hold the slip road until an onward motorway lane reopens',()=>{
- for(const rampId of [0,1,2])for(const approaching of [false,true]){
+ for(const rampId of [0,1,2,3,4,5])for(const approaching of [false,true]){
   const s=setup(),r=s.systems.ramps[rampId];
-  const g=approaching?GANTRIES.findIndex(x=>x>r.x):GANTRIES.findLastIndex(x=>x<=r.x);
+  const g=approaching?GANTRIES.findIndex(x=>x>r.x&&x-r.x<=650):GANTRIES.findLastIndex(x=>x<=r.x);
   if(g<0)continue;
   for(const signal of s.signals[g])signal.mode='closed';
   const c=queuedCar(s,r);run(s,5);assert(r.queue.includes(c));assert.equal(r.joined,0);

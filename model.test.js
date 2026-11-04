@@ -49,7 +49,7 @@ test('a closure forms a growing queue without vehicles crossing the closed gantr
 
 test('all gantries control their own downstream sections, including the last two', () => {
  const s = new Simulation(seeded());quiet(s);s.cars=[];
- assert.equal(GANTRIES.length,7);assert.equal(LENGTH,10000);
+ assert.equal(GANTRIES.length,14);assert.equal(LENGTH,20000);
  for(let g=0;g<GANTRIES.length;g++) {
   s.signals[g][0].speed=20+g*10;
   assert.equal(s.signalAt(GANTRIES[g]+1,0).speed,20+g*10);
@@ -297,7 +297,7 @@ test('an incident in another lane does not slow free traffic',()=>{
  for(const incident of [false,true]){
   const s=new Simulation(seeded());quiet(s);s.cars=[];
   if(incident){s.addIncident(0,2200,'breakdown');s.incidents[0].dispatchAt=Infinity;}
-  const c=s.spawn(1,1900,28);c.truck=false;c.desired=31;c.cooldown=1000;
+  const c=s.spawn(1,1900,28);Object.assign(c,{truck:false,length:4.7,desired:31,courtesy:1,acceleration:1.3,headway:2,reaction:1,cooldown:1000});
   run(s,20);speeds.push(c.v);
  }
  assert(Math.abs(speeds[0]-speeds[1])<.5);
@@ -448,17 +448,17 @@ test('a faster ordinary driver waits for a real right-hand gap before overtaking
 });
 test('the final 500 m cannot generate a hidden incident queue at the top edge',()=>{
  const s=new Simulation(()=>.999);s.cars=[];s.incidents=[];
- assert(!s.incidentPositionAllowed(9850));assert(!s.incidentPositionAllowed(10000));
- for(const w of s.incidentWindows())assert(w.end<=9500);
- for(let n=0;n<100;n++)assert(s.nextIncidentPosition()<=9500);
- const c=s.spawn(0,9850,25);const incident=s.addIncident(0,9850,'breakdown');
- assert(incident&&incident.x<=9500);assert(s.cars.includes(c),'off-screen vehicle converted into obstruction');
- assert.equal(s.addMultiLaneIncident('shed-load',9850,[0,1]),null);
+ assert(!s.incidentPositionAllowed(19850));assert(!s.incidentPositionAllowed(20000));
+ for(const w of s.incidentWindows())assert(w.end<=19500);
+ for(let n=0;n<100;n++)assert(s.nextIncidentPosition()<=19500);
+ const c=s.spawn(0,19850,25);const incident=s.addIncident(0,19850,'breakdown');
+ assert(incident&&incident.x<=19500);assert(s.cars.includes(c),'off-screen vehicle converted into obstruction');
+ assert.equal(s.addMultiLaneIncident('shed-load',19850,[0,1]),null);
 });
 test('all three lanes flow across the top boundary without a virtual downstream queue',()=>{
  const s=new Simulation(()=>.5);s.cars=[];s.incidents=[];s.systemsEnabled=false;
  s.nextIncident=s.nextEmergency=s.nextArrival=Infinity;s.waiting=0;
- const cars=[0,1,2].map(l=>s.spawn(l,9990,25));
+ const cars=[0,1,2].map(l=>s.spawn(l,LENGTH-10,25));
  for(const c of cars){Object.assign(c,{truck:false,desired:25,courtesy:1,cooldown:Infinity,decision:Infinity});assert.equal(s.obstacle(c,c.lane).gap,Infinity);}
  for(let n=0;n<10;n++)s.step(.1);
  assert.equal(s.cars.length,0);assert.equal(s.exits.length,3);
@@ -517,4 +517,26 @@ test('a stopped driver at a red X merges into a creeping available lane',()=>{
   if(waiting.lane===1&&mergedAt==null)mergedAt=(n+1)/10;
  }
  assert(mergedAt!=null&&mergedAt<10,'red-X driver waited instead of using a cooperative safe gap');assert(waiting.x>2650);
+});
+
+
+test('20 km extension retains the original junctions and controls both halves',()=>{
+ const s=new Simulation(()=>.5);s.systemsEnabled=false;s.cars=[];s.incidents=[];s.waiting=0;s.nextArrival=s.nextIncident=s.nextEmergency=Infinity;
+ assert.equal(LENGTH,20000);assert.equal(GANTRIES.length,14);
+ assert.deepEqual(GANTRIES.slice(0,7),[450,1550,2650,3750,4850,6450,8050]);
+ assert.deepEqual(s.systems.ramps.map(r=>r.x),[1200,5900,9000,11200,15900,19000]);
+ const c=s.spawn(0,9990,25);Object.assign(c,{truck:false,courtesy:1,desired:25,cooldown:Infinity,decision:Infinity});run(s,2);
+ assert(s.cars.includes(c)&&c.x>10000,'former boundary still removed traffic');
+ const g=GANTRIES.length-1;s.signals[g][0].mode='closed';
+ const waiting=s.spawn(0,GANTRIES[g]-100,25);Object.assign(waiting,{truck:false,cooldown:Infinity,decision:Infinity});run(s,2);
+ assert(waiting.x<GANTRIES[g],'new gantry closure was ignored');
+ assert(s.incidentWindows().some(w=>w.start>15000));
+});
+test('scheduled roadworks visit the extension and wrap back upstream',()=>{
+ const s=new Simulation(()=>.5),o=s.systems,seen=[];s.cars=[];s.incidents=[];
+ for(let n=0;n<4;n++){
+  o.work.status='complete';o.work.nextAt=0;o.updateWorks(0);seen.push(o.work.x);
+  assert(o.protectionGantry()>=0);assert(o.work.x<LENGTH-500);
+ }
+ assert.deepEqual(seen,[7200,14200,17200,4200]);
 });

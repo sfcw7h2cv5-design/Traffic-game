@@ -39,3 +39,7 @@ canvas{height:1160px}.road-sign-target.gantry-side{font-size:9px}#inlineSignals{
 .network-notice.urgent{background:#f5e4c7;color:#82592e}
 
 .network-notice{min-height:50px;box-sizing:border-box;display:flex;align-items:center;font-size:11px;line-height:1.4}
+
+/* Keep the 20 km ribbon readable at the established overview scale. */
+canvas{height:2320px}canvas.detail-view{height:1160px}
+@media(max-width:700px){canvas{height:clamp(1880px,250svh,2400px)}canvas.detail-view{height:clamp(940px,125svh,1200px)}}

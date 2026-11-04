@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=36';
-import {createSpriteLayout} from './display.js?v=36';
-import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,rampEdges,roadworkCones} from './road.js?v=36';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=37';
+import {createSpriteLayout} from './display.js?v=37';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,rampEdges,roadworkCones} from './road.js?v=37';
 const placeSprites=createSpriteLayout();
 const elements=new Map(),$=s=>{if(!elements.has(s))elements.set(s,document.querySelector(s));return elements.get(s)},sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
@@ -19,9 +19,9 @@ function roadGeometry(){
 }
 function positionTargets(){const geo=roadGeometry();document.querySelectorAll('[data-gantry]').forEach(b=>{const lane=b.dataset.lane,x=GANTRIES[+b.dataset.gantry],left=geo.leftAt(x);b.style.left=(lane==='all'?Math.min(geo.width-46,left+geo.roadWidth+16):left+(+lane)*geo.laneWidth)+'px';b.style.width=(lane==='all'?42:geo.laneWidth)+'px';const gy=geo.project(x);b.hidden=gy<20||gy>canvas.clientHeight-20;b.style.top=gy+'px'});if(!editor.hidden)positionEditor();positionJunctions()}
 function positionEditor(){const geo=roadGeometry(),h=geo.height;const gy=geo.project(GANTRIES[selected]),eh=editor.offsetHeight;editor.style.top=Math.max(8,Math.min(h-eh-40,gy+(gy<h/2?27:-eh-27)))+'px'}
-$('#gantryTargets').innerHTML=GANTRIES.map((g,i)=>['all',0,1,2].map(l=>`<button class="road-sign-target ${l==='all'?'gantry-side':''}" data-gantry="${i}" data-lane="${l}" aria-label="Gantry 0${i+1} ${l==='all'?'all lanes':'lane '+(+l+1)}" aria-expanded="false" aria-controls="inlineSignals">${l==='all'?`G0${i+1}<small>ALL</small>`:''}</button>`).join('')).join('');
+$('#gantryTargets').innerHTML=GANTRIES.map((g,i)=>['all',0,1,2].map(l=>`<button class="road-sign-target ${l==='all'?'gantry-side':''}" data-gantry="${i}" data-lane="${l}" aria-label="Gantry ${String(i+1).padStart(2,'0')} ${l==='all'?'all lanes':'lane '+(+l+1)}" aria-expanded="false" aria-controls="inlineSignals">${l==='all'?`G${String(i+1).padStart(2,'0')}<small>ALL</small>`:''}</button>`).join('')).join('');
 function renderEditor(){
- $('#inlineTitle').textContent=`G0${selected+1} · ${laneScope==='all'?'All lanes':'Lane '+(+laneScope+1)}`;
+ $('#inlineTitle').textContent=`G${String(selected+1).padStart(2,'0')} · ${laneScope==='all'?'All lanes':'Lane '+(+laneScope+1)}`;
  const signals=laneScope==='all'?sim.signals[selected]:[sim.signals[selected][+laneScope]];
  $('#inlineSpeeds').innerHTML=[20,30,40,50,60,70].map(v=>`<button data-speed="${v}" aria-label="${v} mph" aria-pressed="${signals.every(s=>s.speed===v)}">${v}</button>`).join('');
  const modes=[['open','Open'],...(laneScope!=='0'?[['merge-left','Left ↖']]:[]),...(laneScope!=='2'?[['merge-right','Right ↗']]:[]),['closed','Close ×']];
@@ -47,10 +47,10 @@ function updateDetailNavigation(){
  $('#detailPrevious').disabled=viewStart<=0;$('#detailNext').disabled=viewStart+VIEW_LENGTH>=LENGTH;
 }
 function openDetail(x){
- detailArmed=false;$('#zoomPrompt').hidden=true;VIEW_LENGTH=400;viewStart=Math.max(0,Math.min(LENGTH-400,x-200));
+ detailArmed=false;$('#zoomPrompt').hidden=true;canvas.classList.add('detail-view');VIEW_LENGTH=400;viewStart=Math.max(0,Math.min(LENGTH-400,x-200));
  $('#viewMode').textContent='Show all';$('#viewMode').setAttribute('aria-pressed','true');closeEditor();closeRamp();positionTargets();updateDetailNavigation();
 }
-function showAll(){detailArmed=false;VIEW_LENGTH=LENGTH;viewStart=0;$('#zoomPrompt').hidden=true;$('#viewMode').textContent='Detail';$('#viewMode').setAttribute('aria-pressed','false');closeEditor();closeRamp();positionTargets();updateDetailNavigation();}
+function showAll(){canvas.classList.remove('detail-view');detailArmed=false;VIEW_LENGTH=LENGTH;viewStart=0;$('#zoomPrompt').hidden=true;$('#viewMode').textContent='Detail';$('#viewMode').setAttribute('aria-pressed','false');closeEditor();closeRamp();positionTargets();updateDetailNavigation();}
 $('#viewMode').onclick=()=>{closeRamp();
  if(VIEW_LENGTH!==LENGTH){showAll();return;}
  detailArmed=!detailArmed;closeEditor();$('#zoomPrompt').hidden=!detailArmed;$('#viewMode').textContent=detailArmed?'Cancel zoom':'Detail';$('#viewMode').setAttribute('aria-pressed',String(detailArmed));
@@ -62,7 +62,7 @@ new ResizeObserver(positionTargets).observe(canvas);positionTargets();updateDeta
 function updateTrafficDesk(){
  const advice=sim.trafficAdvice();$('#stoppedCount').textContent=advice.stopped;$('#brakingCount').textContent=advice.hardBrakes;
  const g=advice.gantry;
- $('#trafficAdvice').textContent=advice.kind==='queue'?(g>=0?`Queue tail at ${(advice.tail/1000).toFixed(2)} km. Try ${advice.targetSpeed} mph at G0${g+1} to smooth approaching traffic.`:'A queue has reached the entry. Keep the open lanes flowing and monitor recovery.'):advice.kind==='incident'?`Incident ahead at ${(advice.tail/1000).toFixed(2)} km. ${g>=0?'Consider 50 mph at G0'+(g+1)+' before traffic builds.':'Protect approaching traffic with your signals.'}`:'Traffic is flowing. Higher limits suit a clear road; lower limits are useful before queues, not everywhere.';
+ $('#trafficAdvice').textContent=advice.kind==='queue'?(g>=0?`Queue tail at ${(advice.tail/1000).toFixed(2)} km. Try ${advice.targetSpeed} mph at G${String(g+1).padStart(2,'0')} to smooth approaching traffic.`:'A queue has reached the entry. Keep the open lanes flowing and monitor recovery.'):advice.kind==='incident'?`Incident ahead at ${(advice.tail/1000).toFixed(2)} km. ${g>=0?'Consider 50 mph at G'+String(g+1).padStart(2,'0')+' before traffic builds.':'Protect approaching traffic with your signals.'}`:'Traffic is flowing. Higher limits suit a clear road; lower limits are useful before queues, not everywhere.';
  const open=g>=0?sim.signals[g].filter(s=>s.mode==='open'):[];const matched=open.length>0&&open.every(s=>s.speed===advice.targetSpeed);
  $('#applyAdvice').hidden=g<0||advice.kind==='clear';$('#applyAdvice').disabled=matched||!open.length;
  $('#applyAdvice').textContent=!open.length?'Selected approach has no open lanes':matched?'Approach limits set · monitor flow':'Set suggested approach limits';
@@ -90,15 +90,15 @@ $('#objectiveList').innerHTML=operations.objectives.map(o=>'<div class="objectiv
 function updateOperations(){
  const phase=operations.phase,w=operations.work,b=operations.roadblock;
  const workVisible=['announced','awaiting-protection','working','safety-paused'].includes(w.status);
- const before=GANTRIES.findLastIndex(x=>x<w.x),section='G0'+(before+1)+(before+1<GANTRIES.length?'–G0'+(before+2):'–exit');
+ const before=GANTRIES.findLastIndex(x=>x<w.x),section='G'+String(before+1).padStart(2,'0')+(before+1<GANTRIES.length?'–G'+String(before+2).padStart(2,'0'):'–exit');
  const lanes='Lane'+(w.lanes.length>1?'s ':' ')+w.lanes.map(l=>l+1).join(' & ');
  const workStatus=w.status==='safety-paused'?'Roadworks paused — restore protection':w.status==='working'?'Roadworks active':w.status==='awaiting-protection'?'Roadworks awaiting protection':'Roadworks due';
- const notice=workVisible?workStatus+' · '+(w.x/1000).toFixed(1)+' km · '+section+' · '+lanes:phase.name+' · '+(['rolling','clearing'].includes(b.status)?'Police hold active':'3 junctions online');
+ const notice=workVisible?workStatus+' · '+(w.x/1000).toFixed(1)+' km · '+section+' · '+lanes:phase.name+' · '+(['rolling','clearing'].includes(b.status)?'Police hold active':operations.ramps.length+' junctions online');
  if($('#networkNotice').textContent!==notice)$('#networkNotice').textContent=notice;
  for(const r of operations.ramps){$('#rampQueue'+r.id).textContent=r.queue.length+' waiting · '+r.joined+' joined';$('#rampState'+r.id).textContent=r.mode==='closed'?' ×':'';const select=document.querySelector('[data-ramp-mode="'+r.id+'"]');if(select.value!==r.mode)select.value=r.mode;}
  $('#networkNotice').classList.toggle('urgent',w.status==='awaiting-protection'||w.status==='safety-paused');
  const g=operations.protectionGantry();
- $('#workReading').textContent=w.status==='complete'?'Work complete. Reopen the protected lanes when ready.':w.status==='working'?'Crews working at '+(w.x/1000).toFixed(1)+' km · '+Math.ceil(w.remaining/3)+'s at 1× remaining.':w.status==='safety-paused'?'Workers withdrawn: restore the closure at G0'+(g+1)+' to resume.':'Work planned at '+(w.x/1000).toFixed(1)+' km. Close lane'+(w.lanes.length>1?'s ':' ')+w.lanes.map(l=>l+1).join(' & ')+' at G0'+(g+1)+' before crews enter.';
+ $('#workReading').textContent=w.status==='complete'?'Work complete. Reopen the protected lanes when ready.':w.status==='working'?'Crews working at '+(w.x/1000).toFixed(1)+' km · '+Math.ceil(w.remaining/3)+'s at 1× remaining.':w.status==='safety-paused'?'Workers withdrawn: restore the closure at G'+String(g+1).padStart(2,'0')+' to resume.':'Work planned at '+(w.x/1000).toFixed(1)+' km. Close lane'+(w.lanes.length>1?'s ':' ')+w.lanes.map(l=>l+1).join(' & ')+' at G'+String(g+1).padStart(2,'0')+' before crews enter.';
  $('#protectWorks').disabled=w.status==='complete';
  $('#policeReading').textContent=b.status==='scheduled'?'A rolling hold is scheduled to create space for a debris team.':b.status==='rolling'?'Police are holding traffic at about 20 mph to open a safe work gap.':b.status==='clearing'?'The debris team is clearing the gap. Police will release traffic automatically.':'Clearance complete. The police convoy has released traffic.';
  let complete=0;for(const o of operations.objectives){$('#goal-'+o.id).value=o.progress;$('#goalReading-'+o.id).textContent=o.complete?'✓ Complete':o.progress+' / '+o.target;if(o.complete)complete++;}$('#objectiveCount').textContent=complete+'/'+operations.objectives.length;

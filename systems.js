@@ -2,7 +2,7 @@
 export class NetworkSystems {
  constructor(sim,{length,gantries}){
   this.sim=sim;this.length=length;this.gantries=gantries;
-  this.ramps=[1200,5900,9000].map((x,id)=>({id,x,offStart:Math.max(0,x-1750),offLength:id===0?340:850,offDeparture:id===0?220:300,joinTaper:200,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0,exited:0}));
+  this.ramps=[1200,5900,9000,11200,15900,19000].map((x,id)=>({id,x,offStart:Math.max(0,x-1750),offLength:id===0?340:850,offDeparture:id===0?220:300,joinTaper:200,name:'J'+(id+1),mode:'open',mergeLength:600,approachLength:1100,queue:[],nextArrival:12+id*9,lastRelease:-20,releasing:false,joined:0,exited:0}));
   this.phases=[{name:'Normal demand',multiplier:1,duration:90},{name:'Morning rush',multiplier:1.8,duration:180},{name:'Demand easing',multiplier:.75,duration:100},{name:'Stadium traffic',multiplier:2.2,duration:160},{name:'Normal demand',multiplier:1,duration:150}];
   this.phaseIndex=0;this.phase={...this.phases[0],endsAt:90};
   this.work={x:4200,length:150,lanes:[0],announceAt:45,startsAt:150,status:'scheduled',remaining:180,sceneId:null};
@@ -232,12 +232,13 @@ export class NetworkSystems {
   const s=this.sim;
   if(this.work.status==='complete'){
    if(s.elapsed<this.work.nextAt)return;
-   const next=this.work.x===4200?7200:4200;
-   this.work={x:next,length:150,lanes:next===7200?[1,2]:[0],announceAt:s.elapsed,startsAt:s.elapsed+100,status:'scheduled',remaining:180,sceneId:null};
+   const sites=[4200,7200,14200,17200];
+   const next=sites[(sites.indexOf(this.work.x)+1)%sites.length];
+   this.work={x:next,length:150,lanes:next%10000===7200?[1,2]:[0],announceAt:s.elapsed,startsAt:s.elapsed+100,status:'scheduled',remaining:180,sceneId:null};
   }
   const w=this.work;
   if(s.elapsed<w.announceAt)return;
-  if(w.status==='scheduled'){w.status='announced';this.announce(`Roadworks due at ${(w.x/1000).toFixed(1)} km · prepare lane ${w.lanes[0]+1} closure at G0${this.protectionGantry()+1}.`);}
+  if(w.status==='scheduled'){w.status='announced';this.announce(`Roadworks due at ${(w.x/1000).toFixed(1)} km · prepare lane ${w.lanes[0]+1} closure at G${String(this.protectionGantry()+1).padStart(2,'0')}.`);}
   if(s.elapsed<w.startsAt)return;
   const protectedLanes=w.lanes.every(l=>s.signals[this.protectionGantry()][l].mode==='closed');
   const occupied=s.cars.some(c=>s.occupiedLanes(c).some(l=>w.lanes.includes(l))&&c.x>w.x-w.length-255&&c.x-c.length<w.x+5)||s.incidentBodies().some(i=>i.id!==w.sceneId&&w.lanes.includes(i.lane)&&i.x>w.x-w.length-255&&i.x-i.length<w.x+5);

@@ -2,6 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {layoutSprites,createSpriteLayout} from './display.js';
 import {createRoadGeometry,slipRoadPoint,offRampPoint} from './road.js';
+import {LENGTH} from './model.js';
 const options={left:90,laneWidth:55,project:x=>600-(x-1350)*1.41};
 function separated(sprites){
  for(let a=0;a<sprites.length;a++)for(let b=a+1;b<sprites.length;b++){
@@ -56,7 +57,7 @@ test('visible lane positions follow the model through crowded closure merges',as
 });
 
 function overviewFrame(cars,incidents=[],width=320,ramps=[]){
- const g=createRoadGeometry(width,940,10000);
+ const g=createRoadGeometry(width,1880,LENGTH);
  return {g,opts:{laneWidth:g.laneWidth,left:g.leftAt(0),project:g.project,laneX:g.laneX,angleAt:g.angleAt,overview:true,offRampPosition:c=>offRampPoint(g,ramps[c.offRamp],c.x),rampPosition:c=>slipRoadPoint(g,ramps[c.onRamp??c.slipRamp],c.x,c)}};
 }
 function centred(sprites,g,ramps=[]){
@@ -75,7 +76,7 @@ test('full-network overview draws every vehicle on its actual lane centre withou
  const {g,opts}=overviewFrame(cars,incidents),overview=layoutSprites(cars,incidents,opts);
  paintedApart(overview);centred(overview,g);
  assert.equal(overview.length,61+incidents.length);assert(overview.some(c=>c.static));assert(overview.some(c=>c.emergency));
- assert(overview.every(c=>c.height===c.nominalHeight));assert(overview.filter(c=>!c.emergency).every(c=>Math.abs(c.height-4.7*.0988*.90)<1e-8));
+ assert(overview.every(c=>c.height===c.nominalHeight));assert(overview.filter(c=>!c.emergency).every(c=>Math.abs(c.height-4.7*.0964*.90)<1e-8));
 });
 test('full-network overview improves visible footprint while Detail retains vehicle artwork',()=>{
  const cars=[{id:1,x:1000,lane:0,visualLane:0},{id:2,x:1300,lane:1,visualLane:1,truck:true},{id:3,x:1600,lane:2,visualLane:2,kind:'ambulance'},{id:4,x:2000,lane:2,visualLane:2,kind:'police'},{id:5,x:2500,lane:-1,visualLane:-1,kind:'recovery'}];
@@ -178,7 +179,7 @@ test('fixed camera separates a turned nose without moving the road or vehicle si
 });
 
 
-test('overview sizes stay fixed through traffic changes and keep the full 10 km camera',()=>{
+test('overview sizes stay fixed through traffic changes and keep the full 20 km camera',()=>{
  for(const width of [320,390]){
   const {g,opts}=overviewFrame([],[],width);
   const cars=[{id:1,x:4000,lane:0,visualLane:0,length:4.7},{id:2,x:4010,lane:0,visualLane:0,length:16.5,truck:true},{id:3,x:4100,lane:1,visualLane:1,length:4.7,kind:'police',emergency:true}];
@@ -189,7 +190,7 @@ test('overview sizes stay fixed through traffic changes and keep the full 10 km 
   assert.equal(next.length,cars.length);centred(next,nextFrame.g);
   for(const c of next)if(sizes.has(c.id))assert.deepEqual([c.width,c.height],sizes.get(c.id));
   assert.deepEqual([450,1550,2650,3750,4850,6450,8050].map(x=>[nextFrame.g.center(x),nextFrame.g.project(x)]),landmarks);
-  assert.equal(nextFrame.g.height,940);assert.equal(nextFrame.g.project(0),964);assert.equal(nextFrame.g.project(10000),-24);
+  assert.equal(nextFrame.g.height,1880);assert.equal(nextFrame.g.project(0),1904);assert.equal(nextFrame.g.project(LENGTH),-24);
  }
 });
 

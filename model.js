@@ -1,8 +1,8 @@
-import {NetworkSystems} from './systems.js?v=36';
-export const LENGTH = 10000;
+import {NetworkSystems} from './systems.js?v=37';
+export const LENGTH = 20000;
 // Keep the clipped top edge clear of incidents: outflow is always free.
 export const EXIT_CLEAR_START = LENGTH - 500;
-export const GANTRIES = [450, 1550, 2650, 3750, 4850, 6450, 8050];
+export const GANTRIES = [450, 1550, 2650, 3750, 4850, 6450, 8050, 10450, 11550, 12650, 13750, 14850, 16450, 18050];
 const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
 
 // Body clearance occurs before the departure curve is fully complete. Waiting

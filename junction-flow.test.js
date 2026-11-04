@@ -189,7 +189,7 @@ test('a stopped committed merger releases the acceleration lane after its body s
  }
 });
 test('a stopped joiner at every junction receives a lasting gap request until it merges',()=>{
- for(const id of [0,1,2])for(const truck of [false,true]){
+ for(const id of [0,1,2,3,4,5])for(const truck of [false,true]){
   const s=setup(19),o=s.systems,r=o.ramps[id],point=r.x-r.joinTaper,c=s.spawn(0,point-3.5,0);
   Object.assign(c,{truck,length:truck?16.5:4.7,desired:25,v:0,headway:2,courtesy:1,onRamp:id,slipRamp:id,rampMerging:false,cooldown:0,decision:0});
   const main=x=>{const car=s.spawn(0,x,23);Object.assign(car,{truck:false,length:4.7,desired:25,v:23,courtesy:1,headway:1.2,acceleration:1.3,cooldown:Infinity,decision:Infinity});};
@@ -233,7 +233,7 @@ test('G06 roadworks do not strand open-lane leaders behind a virtual gantry gate
 });
 
 test('every junction catches an exit-bound vehicle crossing beyond the old 5 m window',()=>{
- for(const id of [0,1,2])for(const truck of [false,true]){
+ for(const id of [0,1,2,3,4,5])for(const truck of [false,true]){
   const s=setup(),o=s.systems,r=o.ramps[id];while((s.id+r.id)%4)s.id++;
   const c=s.spawn(0,r.offStart-2,28);Object.assign(c,{truck,length:truck?16.5:4.7,cooldown:Infinity,decision:Infinity});
   o.updateOffRamps();assert.equal(c.offRamp,undefined);
@@ -243,7 +243,7 @@ test('every junction catches an exit-bound vehicle crossing beyond the old 5 m w
  }
 });
 test('junctions select distinct exit cohorts and leave through traffic on the motorway',()=>{
- for(const id of [0,1,2]){
+ for(const id of [0,1,2,3,4,5]){
   const s=setup(),o=s.systems,r=o.ramps[id];let departing=0;
   for(let n=0;n<40;n++){
    const c=s.spawn(0,r.offStart-1,28);s.cars=[c];o.updateOffRamps();c.x=r.offStart+8;o.updateOffRamps();
