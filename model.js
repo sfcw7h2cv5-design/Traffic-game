@@ -1,5 +1,5 @@
-import {driverProfile} from './experience.js?v=38';
-import {NetworkSystems} from './systems.js?v=38';
+import {driverProfile} from './experience.js?v=39';
+import {NetworkSystems} from './systems.js?v=39';
 export const LENGTH = 20000;
 // Keep the clipped top edge clear of incidents: outflow is always free.
 export const EXIT_CLEAR_START = LENGTH - 500;
@@ -38,6 +38,7 @@ function trafficIndex(traffic){
       if(before(candidate,first)){second=first;first=candidate;}else if(before(candidate,second))second=candidate;
       candidate.first=first;candidate.second=second;
     }
+
   }
   return lanes;
 }
@@ -48,6 +49,14 @@ function indexedLeader(index,car,lane){
   if(low===entries.length)return null;
   const {first,second}=entries[low];
   return first.car.id===car.id?second:first;
+}
+
+function advanceSteering(c,dt){
+ if(!c.laneChange&&Math.abs(c.visualLane-c.lane)>1e-7)c.laneChange={from:c.visualLane,to:c.lane,progress:0,duration:c.truck?5.5:4.5};
+ const turn=c.laneChange;if(!turn){c.laneChangeRate=0;return;}
+ turn.progress=Math.min(1,turn.progress+dt/turn.duration);const t=turn.progress,ease=t*t*t*(10+t*(-15+6*t));
+ c.visualLane=turn.from+(turn.to-turn.from)*ease;c.laneChangeRate=(turn.to-turn.from)*30*t*t*(1-t)*(1-t)/turn.duration;
+ if(t>=1){c.visualLane=turn.to;c.laneChangeRate=0;c.laneChange=null;}
 }
 
 export class Simulation {
@@ -69,6 +78,9 @@ export class Simulation {
         this.spawn(lane, x, [25, 28, 30][lane] + random() * 2);
       }
     }
+    this.nextRecoveryPatrol=60+random()*60;
+    for(let n=0;n<4;n++){const x=(n+.2+random()*.6)*LENGTH/4;const car=this.cars.filter(c=>c.lane===0&&!c.kind&&this.cars.every(o=>o===c||!this.occupiedLanes(o).includes(0)||o.x>=c.x||c.x-11-o.x>=2)).sort((a,b)=>Math.abs(a.x-x)-Math.abs(b.x-x))[0];if(car)this.configurePatrol(car);}
+    this.systems.scheduleRoadblockLocation();
   }
   spawn(lane, x = 0, v = 0, kind = null) {
     const truck = !kind && lane < 2 && this.random() < (lane === 0 ? .26 : .10);
@@ -267,15 +279,35 @@ export class Simulation {
       if(!changed)break;
     }
   }
+  configurePatrol(c){Object.assign(c,{kind:'recovery',truck:true,length:11,desired:24,acceleration:.8,recoveryPatrol:true,towing:false});c.v=Math.min(c.v,24);return c;}
+  updateRecoveryPatrols(){
+    if(this.elapsed<this.nextRecoveryPatrol)return;
+    this.nextRecoveryPatrol=this.elapsed+90+this.random()*90;
+    if(this.cars.filter(c=>c.kind==='recovery').length>=6)return;
+    const front=this.cars.filter(c=>this.occupiedLanes(c).includes(0)).sort((a,b)=>a.x-b.x)[0];
+    if(front&&front.x-front.length<70)return;
+    this.configurePatrol(this.spawn(0,0,Math.min(20,front?.v??20),'recovery'));
+  }
+  enterRecoveryShoulder(tow){
+    if(tow.lane!==0||tow.laneChange||Math.abs(tow.visualLane)>.02)return false;
+    if(this.cars.some(c=>c!==tow&&this.occupiedLanes(c).includes(-1)&&c.x>tow.x-tow.length-10&&c.x-c.length<tow.x+30))return false;
+    tow.fromLane=0;tow.lane=-1;tow.laneChange={from:0,to:-1,progress:0,duration:4.5};tow.laneChangeRate=0;return true;
+  }
   dispatchRecovery(incident) {
     if(!incident||incident.type!=='breakdown'||incident.status!=='awaiting-recovery')return false;
-    // Recovery joins via the left hard shoulder, which is separate from traffic.
-    let entry=0;const length=11+incident.length;
-    for(let pass=0;pass<=this.cars.length;pass++){const occupied=this.cars.find(c=>c.lane===-1&&entry>c.x-c.length-2&&entry-length<c.x+2);if(!occupied)break;entry=occupied.x-occupied.length-2;}
-    const tow=this.spawn(-1,entry,20,'recovery');
+    // Use the closest available upstream patrol; trucks already beyond the
+    // incident cannot reverse. Reserve its eventual loaded length before moving.
+    let tow=this.cars.filter(c=>c.kind==='recovery'&&!c.towing&&c.recoveryTarget==null&&c.recovering==null&&c.lane>=0&&c.lane<=1&&!c.laneChange&&c.x<incident.x-60&&this.cars.every(o=>o===c||!this.occupiedLanes(o).includes(c.lane)||o.x>=c.x||c.x-(c.length+incident.length)-o.x>=2))
+      .sort((a,b)=>(incident.x-a.x)/Math.max(10,a.v)+a.lane*6-((incident.x-b.x)/Math.max(10,b.v)+b.lane*6))[0];
+    const nearby=!!tow;
+    if(!tow){
+      let entry=0;const length=11+incident.length;
+      for(let pass=0;pass<=this.cars.length;pass++){const occupied=this.cars.find(c=>c.lane===-1&&entry>c.x-c.length-2&&entry-length<c.x+2);if(!occupied)break;entry=occupied.x-occupied.length-2;}
+      tow=this.spawn(-1,entry,20,'recovery');
+    }
     tow.length+=incident.length;
-    tow.recoveryTarget=incident.id;incident.status='recovery-en-route';
-    this.lastEvent=`Recovery truck dispatched · Lane 1 · ${(incident.x/1000).toFixed(2)} km.`;this.eventId++;
+    tow.recoveryTarget=incident.id;incident.assignedAt=this.elapsed;incident.nearbyRecovery=nearby;if(nearby)this.enterRecoveryShoulder(tow);incident.status='recovery-en-route';
+    this.lastEvent=`${nearby?'Nearby recovery patrol assigned':'Recovery truck dispatched'} · Lane 1 · ${(incident.x/1000).toFixed(2)} km.`;this.eventId++;
     return true;
   }
   manageRecovery(dt) {
@@ -283,7 +315,12 @@ export class Simulation {
       if(i.type!=='breakdown')continue;
       if(i.status==='awaiting-recovery'&&this.elapsed>=i.dispatchAt)this.dispatchRecovery(i);
       const tow=this.cars.find(c=>c.recoveryTarget===i.id);
-      if(i.status==='recovery-en-route'&&tow&&tow.x>=i.x-25){
+      if(tow&&tow.lane>=0&&tow.x>i.x-25){
+        // If traffic prevented shoulder access, never reverse the patrol.
+        tow.length-=i.length;tow.recoveryTarget=null;i.status='awaiting-recovery';i.dispatchAt=this.elapsed;this.dispatchRecovery(i);continue;
+      }
+      if(tow&&tow.lane===0)this.enterRecoveryShoulder(tow);
+      if(i.status==='recovery-en-route'&&tow&&tow.lane===-1&&tow.x>=i.x-25){
         tow.x=i.x-25;tow.v=0;tow.recovering=i.id;i.status='recovering';i.clearsAt=this.elapsed+i.workDuration;
         this.lastEvent='Recovery on scene · loading the broken-down vehicle.';this.eventId++;
       }
@@ -327,6 +364,7 @@ export class Simulation {
   step(dt) {
     this.elapsed += dt;
     if(this.systemsEnabled)this.systems.beforeStep(dt);
+    if(this.systemsEnabled)this.updateRecoveryPatrols();
     this.manageRecovery(dt);
     if(this.elapsed>=this.nextEmergency){
       const lane=2;
@@ -340,7 +378,7 @@ export class Simulation {
       this.eventId++;
       for(const incident of cleared) {
         const tow=this.cars.find(c=>c.recovering===incident.id);
-        if(tow){tow.recovering=null;tow.recoveryTarget=null;tow.towing=true;tow.cooldown=0;tow.needsRoadRejoin=true;}
+        if(tow){if(this.systemsEnabled)this.systems.experience.recordRecovery(incident);tow.recovering=null;tow.recoveryTarget=null;tow.towing=true;tow.cooldown=0;tow.needsRoadRejoin=true;}
       }
     }
     if (this.elapsed >= this.nextIncident) {
@@ -528,14 +566,14 @@ export class Simulation {
     this._stepTrafficIndexes.set(movementSnapshot,trafficIndex(movementSnapshot));
     for(const c of this.cars){
       if(c.onRamp!=null){const ramp=this.systems.ramps[c.onRamp],join=ramp.x;c.rampProgress=Math.max(0,Math.min(1,(c.x-(join-ramp.mergeLength))/ramp.mergeLength));if(c.x>=join){c.onRamp=null;c.slipRamp=null;c.rampMerging=false;}}
-      if(c.recovering!=null){c.v=0;continue;}
+      if(c.recovering!=null){c.v=0;advanceSteering(c,dt);continue;}
       if(c.lane<0){
         if(c.kind==='recovery'&&c.recoveryTarget==null){c.v=0;c.a=0;continue;}
-        const front=this.obstacle(c,c.lane,movementSnapshot);
-        c.v=Math.min(c.desired,c.v+c.acceleration*dt);
-        const berth=this.incidents.find(i=>i.id===c.recoveryTarget);
-        const remaining=berth?Math.max(0,berth.x-25-c.x):Infinity;
-        c.x+=Math.min(remaining,Math.max(0,front.gap-2),c.v*dt);continue;
+        let front=this.obstacle(c,c.lane,movementSnapshot);
+        for(const lane of this.occupiedLanes(c)){const other=this.obstacle(c,lane,movementSnapshot);if(other.gap<front.gap)front=other;}
+        const berth=this.incidents.find(i=>i.id===c.recoveryTarget),remaining=berth?Math.max(0,berth.x-25-c.x):Infinity;
+        c.v=Math.min(c.desired,Math.sqrt(3*remaining),c.v+c.acceleration*dt);
+        const move=Math.min(remaining,Math.max(0,front.gap-2),c.v*dt);c.x+=move;if(move<c.v*dt)c.v=move/dt;advanceSteering(c,dt);continue;
       }
       const drivingLane=c.onRamp!=null&&!c.rampMerging?10+c.onRamp:offLaneClear(c)?20+c.offRamp:c.lane;
       let front=this.obstacle(c,drivingLane,movementSnapshot);
@@ -573,6 +611,7 @@ export class Simulation {
       const closing = c.v - front.speed;
       const wanted = 3.5 + Math.max(0, c.v * headway + c.v * closing / (2 * Math.sqrt(c.acceleration * 2)));
       let acceleration = c.acceleration * (1 - (c.v / desired) ** 4 - (wanted / front.gap) ** 2);
+      if(c.blocker&&(front.speed>=c.v||front.gap>15+c.v*.8))acceleration=Math.max(acceleration,-1.2);
       if(yielding&&!c.emergency){
         const merger=this.cars.find(o=>o.id===request);
         const target=Math.max(.4,Math.min((c.mergeYieldBase??c.v)-2,(merger?.v??c.v)+(merger?.onRamp!=null?0:1)));
@@ -605,15 +644,7 @@ export class Simulation {
       // Steering eases into and out of a committed manoeuvre. Keep a bounded
       // time profile at walking pace too, so a stopped driver can escape a red X
       // without disabling the original lane's bumper protection.
-      if(!c.laneChange&&Math.abs(c.visualLane-c.lane)>1e-7)c.laneChange={from:c.visualLane,to:c.lane,progress:0,duration:c.truck?5.5:4.5};
-      const turn=c.laneChange;
-      if(turn){
-        turn.progress=Math.min(1,turn.progress+dt/turn.duration);
-        const t=turn.progress,ease=t*t*t*(10+t*(-15+6*t));
-        c.visualLane=turn.from+(turn.to-turn.from)*ease;
-        c.laneChangeRate=(turn.to-turn.from)*30*t*t*(1-t)*(1-t)/turn.duration;
-        if(t>=1){c.visualLane=turn.to;c.laneChangeRate=0;c.laneChange=null;}
-      }else c.laneChangeRate=0;
+      advanceSteering(c,dt);
     }
     this.enforceSeparation();
     this.cars = this.cars.filter(c => {

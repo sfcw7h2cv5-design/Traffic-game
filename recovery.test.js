@@ -62,3 +62,30 @@ test('a merge advisory still permits a safe rejoin before ordinary lane guidance
  for(let n=0;n<120;n++){const x=tow.x;step(s);assert(tow.x>=x);separated(s);}
  assert(tow.lane>=0);assert(!tow.needsRoadRejoin);
 });
+
+test('a nearby upstream patrol attends an end-of-road breakdown instead of travelling from entry',()=>{
+ const s=setup(),tow=s.configurePatrol(s.spawn(0,18000,24,'recovery')),incident=s.addIncident(0,18500,'breakdown');
+ assert(s.dispatchRecovery(incident));assert.equal(tow.recoveryTarget,incident.id);assert(incident.nearbyRecovery);assert.equal(s.cars.length,1);assert.equal(tow.lane,-1);assert.equal(tow.visualLane,0);
+ let previous=tow.x,arrived=null;for(let n=0;n<900&&s.incidents.includes(incident);n++){step(s);assert(tow.x>=previous);previous=tow.x;separated(s);if(incident.status==='recovering'&&arrived==null)arrived=s.elapsed;}
+ assert(arrived!=null&&arrived<40);assert(!s.incidents.includes(incident));assert(tow.towing);assert(tow.x>18000);
+});
+test('patrol dispatch excludes trucks already beyond a breakdown, busy or carrying another vehicle',()=>{
+ const s=setup(),available=s.configurePatrol(s.spawn(0,16000,24,'recovery'));
+ const busy=s.configurePatrol(s.spawn(0,17500,24,'recovery'));busy.recoveryTarget=999;
+ const loaded=s.configurePatrol(s.spawn(0,17200,24,'recovery'));loaded.towing=true;
+ const ahead=s.configurePatrol(s.spawn(0,19000,24,'recovery'));
+ const incident=s.addIncident(0,18500,'breakdown');s.dispatchRecovery(incident);
+ assert.equal(available.recoveryTarget,incident.id);assert.equal(busy.recoveryTarget,999);assert.equal(ahead.recoveryTarget,undefined);assert.equal(loaded.recoveryTarget,undefined);
+});
+test('patrols start throughout the motorway and are replenished as ordinary traffic',()=>{
+ const s=new Simulation(seeded());const patrols=s.cars.filter(c=>c.recoveryPatrol);assert.equal(patrols.length,4);assert(patrols.some(c=>c.x>15000));assert(patrols.every(c=>c.lane===0&&c.length===11));separated(s);
+ s.cars=[];s.elapsed=s.nextRecoveryPatrol+.1;s.updateRecoveryPatrols();assert.equal(s.cars.length,1);assert(s.cars[0].recoveryPatrol);assert.equal(s.cars[0].lane,0);
+});
+
+test('a patrol unable to get left before passing the incident continues forward and hands the job over',()=>{
+ const s=setup(),tow=s.configurePatrol(s.spawn(1,18400,24,'recovery'));
+ for(const x of [18300,18425]){const c=s.spawn(0,x,24);Object.assign(c,{truck:false,length:4.7,desired:24,v:24,courtesy:1,cooldown:Infinity,decision:Infinity});}
+ const incident={id:990,type:'breakdown',lane:0,x:18500,length:4.7,started:0,workDuration:20,status:'awaiting-recovery',dispatchAt:Infinity,clearsAt:Infinity};s.incidents=[incident];s.dispatchRecovery(incident);assert.equal(tow.recoveryTarget,incident.id);
+ let previous=tow.x;for(let n=0;n<150;n++){step(s);assert(tow.x>=previous,'patrol reversed to its missed incident');previous=tow.x;separated(s);}
+ assert.equal(tow.recoveryTarget,null);assert(s.cars.some(c=>c!==tow&&c.recoveryTarget===incident.id));
+});

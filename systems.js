@@ -1,4 +1,4 @@
-import {ShiftExperience} from './experience.js?v=38';
+import {ShiftExperience} from './experience.js?v=39';
 // Scheduled network operations share the same individual-vehicle traffic model.
 export class NetworkSystems {
  constructor(sim,{length,gantries}){
@@ -7,10 +7,10 @@ export class NetworkSystems {
   this.phases=[{name:'Normal demand',multiplier:1,duration:90},{name:'Morning rush',multiplier:1.8,duration:180},{name:'Demand easing',multiplier:.75,duration:100},{name:'Stadium traffic',multiplier:2.2,duration:160},{name:'Normal demand',multiplier:1,duration:150}];
   this.phaseIndex=0;this.phase={...this.phases[0],endsAt:90};
   this.work={x:4200,length:150,lanes:[0],announceAt:45,startsAt:150,status:'scheduled',remaining:180,sceneId:null};
-  this.roadblock={status:'scheduled',startsAt:110,x:1000,length:80,vehicleIds:[],sceneId:null,workEndsAt:null};
-  this.totalExited=0;this.ambulancesExited=0;this.completedWorks=0;this.queueSeen=false;this.queueSeenAt=0;
+  this.roadblock={status:'scheduled',startsAt:110,x:1000,length:80,vehicleIds:[],sceneId:null,workEndsAt:null,minRolling:30,duration:75};
+  this.totalExited=0;this.ambulancesExited=0;this.completedWorks=0;
   this.experience=new ShiftExperience(sim,this);
-  this.objectives=[{id:'flow',title:'Serve 100 vehicles',target:100,progress:0,complete:false},{id:'ambulance',title:'Get an ambulance through',target:1,progress:0,complete:false},{id:'queue',title:'Clear a queue of 5+ vehicles',target:1,progress:0,complete:false},{id:'works',title:'Complete protected roadworks',target:1,progress:0,complete:false}];
+
  }
  announce(text){this.sim.lastEvent=text;this.sim.eventId++;}
  setRampMode(id,mode){if(!['open','closed'].includes(mode)||!this.ramps[id])return false;this.ramps[id].mode=mode;return true;}
@@ -257,25 +257,41 @@ export class NetworkSystems {
    this.announce('Roadworks complete. Reopen your lane signals when ready.');
   }
  }
+ scheduleRoadblockLocation(previous=-Infinity){
+  const windows=this.sim.incidentWindows().filter(w=>w.start>2000&&w.end-w.start>150&&Math.abs((w.start+w.end)/2-previous)>2000&&Math.abs((w.start+w.end)/2-this.work.x)>800&&!this.sim.incidents.some(i=>Math.abs(i.x-(w.start+w.end)/2)<800));
+  if(!windows.length)return;
+  const w=windows[Math.floor(this.sim.random()*windows.length)];this.roadblock.x=w.start+80+this.sim.random()*Math.max(1,w.end-w.start-160);
+  this.roadblock.duration=60+this.sim.random()*45;
+ }
+ roadblockEntry(){
+  const s=this.sim,b=this.roadblock;
+  for(let n=0;n<45;n++){
+   const x=b.x-900+(n%2?1:-1)*Math.ceil(n/2)*25;if(x<100)continue;
+   if(s.incidentBodies().some(i=>Math.abs(i.x-x)<400))continue;
+   if([0,1,2].some(l=>s.signalAt(x,l).mode==='closed'))continue;
+   if(s.cars.some(c=>s.occupiedLanes(c).some(l=>l>=0&&l<3)&&(c.x>=x?c.x-c.length-x<35:x-4.7-c.x<15+c.v*2+Math.max(0,c.v-9)*2)))continue;
+   return x;
+  }return null;
+ }
  updateRoadblock(){
   const s=this.sim,b=this.roadblock;
-  if(b.status==='complete')return;
+  if(b.status==='complete'){if(s.elapsed<(b.nextAt??Infinity))return;const previous=b.x;Object.assign(b,{status:'scheduled',startsAt:s.elapsed+30,vehicleIds:[],sceneId:null,workEndsAt:null});this.scheduleRoadblockLocation(previous);this.announce('Police rolling hold planned near '+(b.x/1000).toFixed(1)+' km.');}
   if(b.status==='scheduled'&&s.elapsed>=b.startsAt){
-   if(s.cars.some(c=>c.lane>=0&&c.x<130))return;
-   b.status='rolling';
-   for(let lane=0;lane<3;lane++){const c=s.spawn(lane,0,9,'roadblock');c.blocker=true;c.desired=9;c.v=9;c.cooldown=Infinity;c.decision=Infinity;c.acceleration=.8;b.vehicleIds.push(c.id);}
-   this.announce('Police rolling roadblock · 20 mph across all lanes while a debris team makes the road safe.');
+   const entry=this.roadblockEntry();if(entry==null)return;
+   b.status='rolling';b.formedAt=s.elapsed;const nearby=s.cars.filter(c=>c.lane>=0&&c.x<entry&&entry-c.x<400);const approachSpeed=Math.min(24,Math.max(9,nearby.length?nearby.reduce((a,c)=>a+c.v,0)/nearby.length:18));
+   for(let lane=0;lane<3;lane++){const c=s.spawn(lane,entry,approachSpeed,'roadblock');c.blocker=true;c.desired=9;c.v=approachSpeed;c.cooldown=Infinity;c.decision=Infinity;c.acceleration=.8;b.vehicleIds.push(c.id);}
+   this.announce('Police rolling hold at '+(b.x/1000).toFixed(1)+' km · convoy slowing all lanes for debris clearance.');
   }
   if(b.status==='rolling'){
    const occupied=s.cars.some(c=>!c.blocker&&c.lane>=0&&c.x>b.x-b.length-20&&c.x-c.length<b.x+30);
    const conflict=s.incidents.some(i=>Math.abs(i.x-b.x)<250);
-   if(!occupied&&!conflict){
+   if(!occupied&&!conflict&&s.elapsed>=(b.formedAt??0)+(b.minRolling??30)){
     const scene={id:s.incidentId++,type:'police-clearance',lane:0,lanes:[0,1,2],x:b.x,length:b.length,bodies:[0,1,2].map(lane=>({lane,x:b.x,length:b.length})),status:'crews-working',clearsAt:Infinity};
-    s.incidents.push(scene);b.sceneId=scene.id;b.workEndsAt=s.elapsed+24;b.status='clearing';
+    s.incidents.push(scene);b.sceneId=scene.id;b.workEndsAt=s.elapsed+(b.duration??75);b.status='clearing';
    }
   }
   if(b.status==='clearing'&&s.elapsed>=b.workEndsAt){
-   s.incidents=s.incidents.filter(i=>i.id!==b.sceneId);b.status='complete';
+   s.incidents=s.incidents.filter(i=>i.id!==b.sceneId);b.status='complete';b.nextAt=s.elapsed+240+s.random()*300;
    for(const c of s.cars)if(b.vehicleIds.includes(c.id)){c.kind='police';c.blocker=false;c.emergency=true;c.desired=110*.44704;c.acceleration=3;c.headway=1.1;c.reaction=.35;c.courtesy=1;c.decision=0;c.cooldown=0;}
    this.announce('Debris clearance complete. Police rolling hold released; traffic may accelerate.');
   }
@@ -290,12 +306,6 @@ export class NetworkSystems {
  afterStep(dt=.1){
   this.experience.afterStep(dt);
   this.releaseRamps();
-  const stopped=this.sim.cars.filter(c=>c.lane>=0&&!c.emergency&&c.v<.5).length;
-  if(stopped>=5&&!this.queueSeen){this.queueSeen=true;this.queueSeenAt=this.sim.elapsed;}
-  const queueCleared=this.queueSeen&&stopped<=1&&this.sim.elapsed>this.queueSeenAt+20;
-  for(const o of this.objectives){
-   o.progress=Math.min(o.target,o.id==='flow'?this.totalExited:o.id==='ambulance'?this.ambulancesExited:o.id==='works'?this.completedWorks:queueCleared?1:0);
-   if(o.progress>=o.target)o.complete=true;if(o.complete)o.progress=o.target;
-  }
+
  }
 }

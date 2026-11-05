@@ -353,8 +353,8 @@ test('traffic already alongside a waiting merger does not brake to let it in',()
  const s=new Simulation(seeded());quiet(s);s.cars=[];
  s.signals[1][0].mode='closed';
  const waiting=s.spawn(0,2200,0);waiting.length=16.5;waiting.truck=true;waiting.cooldown=0;waiting.decision=0;
- const passing=s.spawn(1,2192,28);passing.truck=false;passing.cooldown=1000;
- const behind=s.spawn(1,2100,28);behind.truck=false;behind.cooldown=1000;
+ const passing=s.spawn(1,2192,28);Object.assign(passing,{truck:false,length:4.7,v:28,desired:30,courtesy:1,cooldown:1000});
+ const behind=s.spawn(1,2100,28);Object.assign(behind,{truck:false,length:4.7,v:28,desired:30,courtesy:1,cooldown:1000});
  s.step(.1);assert.equal(passing.yieldingFor,null);assert.equal(behind.yieldingFor,null);assert(passing.v>27.9);
 });
 test('only the nearest rear driver with enough distance to ease safely is asked to make a gap',()=>{

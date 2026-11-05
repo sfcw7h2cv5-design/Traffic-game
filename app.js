@@ -1,6 +1,6 @@
-import {Simulation,LENGTH,GANTRIES} from './model.js?v=38';
-import {createSpriteLayout} from './display.js?v=38';
-import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,rampEdges,roadworkCones} from './road.js?v=38';
+import {Simulation,LENGTH,GANTRIES} from './model.js?v=39';
+import {createSpriteLayout} from './display.js?v=39';
+import {createRoadGeometry,slipRoadPoint,slipRoadEdges,offRampPoint,rampEdges,roadworkCones} from './road.js?v=39';
 const placeSprites=createSpriteLayout();
 const elements=new Map(),$=s=>{if(!elements.has(s))elements.set(s,document.querySelector(s));return elements.get(s)},sim=new Simulation();window.sim=sim;
 let selected=1,laneScope='all',rate=1,paused=false,editorOpener=null;
@@ -88,29 +88,31 @@ function updateRampEditor(){if(activeRamp==null)return;const r=operations.ramps[
 $('#rampsList').innerHTML=operations.ramps.map(r=>'<div class="ramp-row"><div><b>'+r.name+' · '+(r.x/1000).toFixed(1)+' km</b><small id="rampQueue'+r.id+'">0 waiting</small></div><select data-ramp-mode="'+r.id+'" aria-label="'+r.name+' slip-road state"><option value="open">Open</option><option value="closed">Closed</option></select></div>').join('');
 $('#rampsList').onchange=e=>{if(e.target.dataset.rampMode!=null){operations.setRampMode(+e.target.dataset.rampMode,e.target.value);updateRampEditor()}};
 $('#protectWorks').onclick=()=>{operations.protectWorks();updateOperations()};
-$('#objectiveList').innerHTML=operations.objectives.map(o=>'<div class="objective"><label for="goal-'+o.id+'">'+o.title+'</label><progress id="goal-'+o.id+'" max="'+o.target+'" value="0"></progress><small id="goalReading-'+o.id+'">0 / '+o.target+'</small></div>').join('');
 function updateOperations(){
  const phase=operations.phase,w=operations.work,b=operations.roadblock;
  const workVisible=['announced','awaiting-protection','working','safety-paused'].includes(w.status);
  const before=GANTRIES.findLastIndex(x=>x<w.x),section='G'+String(before+1).padStart(2,'0')+(before+1<GANTRIES.length?'–G'+String(before+2).padStart(2,'0'):'–exit');
  const lanes='Lane'+(w.lanes.length>1?'s ':' ')+w.lanes.map(l=>l+1).join(' & ');
  const workStatus=w.status==='safety-paused'?'Roadworks paused — restore protection':w.status==='working'?'Roadworks active':w.status==='awaiting-protection'?'Roadworks awaiting protection':'Roadworks due';
- const notice=workVisible?workStatus+' · '+(w.x/1000).toFixed(1)+' km · '+section+' · '+lanes:phase.name+' · '+(['rolling','clearing'].includes(b.status)?'Police hold active':operations.ramps.length+' junctions online');
+ const notice=['rolling','clearing'].includes(b.status)?'Police rolling hold · '+(b.x/1000).toFixed(1)+' km · '+(b.status==='clearing'?'clearance underway':'convoy forming'):workVisible?workStatus+' · '+(w.x/1000).toFixed(1)+' km · '+section+' · '+lanes:phase.name+' · '+(['rolling','clearing'].includes(b.status)?'Police hold active':operations.ramps.length+' junctions online');
  if($('#networkNotice').textContent!==notice)$('#networkNotice').textContent=notice;
  for(const r of operations.ramps){$('#rampQueue'+r.id).textContent=r.queue.length+' waiting · '+r.joined+' joined';$('#rampState'+r.id).textContent=r.mode==='closed'?' ×':'';const select=document.querySelector('[data-ramp-mode="'+r.id+'"]');if(select.value!==r.mode)select.value=r.mode;}
  $('#networkNotice').classList.toggle('urgent',w.status==='awaiting-protection'||w.status==='safety-paused');
  const g=operations.protectionGantry();
  $('#workReading').textContent=w.status==='complete'?'Work complete. Reopen the protected lanes when ready.':w.status==='working'?'Crews working at '+(w.x/1000).toFixed(1)+' km · '+Math.ceil(w.remaining/3)+'s at 1× remaining.':w.status==='safety-paused'?'Workers withdrawn: restore the closure at G'+String(g+1).padStart(2,'0')+' to resume.':'Work planned at '+(w.x/1000).toFixed(1)+' km. Close lane'+(w.lanes.length>1?'s ':' ')+w.lanes.map(l=>l+1).join(' & ')+' at G'+String(g+1).padStart(2,'0')+' before crews enter.';
  $('#protectWorks').disabled=w.status==='complete';
- $('#policeReading').textContent=b.status==='scheduled'?'A rolling hold is scheduled to create space for a debris team.':b.status==='rolling'?'Police are holding traffic at about 20 mph to open a safe work gap.':b.status==='clearing'?'The debris team is clearing the gap. Police will release traffic automatically.':'Clearance complete. The police convoy has released traffic.';
- let complete=0;for(const o of operations.objectives){$('#goal-'+o.id).value=o.progress;$('#goalReading-'+o.id).textContent=o.complete?'✓ Complete':o.progress+' / '+o.target;if(o.complete)complete++;}$('#objectiveCount').textContent=complete+'/'+operations.objectives.length;
+ $('#policeReading').textContent=b.status==='scheduled'?'A rolling hold is planned near '+(b.x/1000).toFixed(1)+' km to create space for a debris team.':b.status==='rolling'?'Near '+(b.x/1000).toFixed(1)+' km, police are holding traffic at about 20 mph to open a safe work gap.':b.status==='clearing'?'The debris team is clearing the gap. Police will release traffic automatically.':'Clearance complete. The convoy has released traffic; another hold will be scheduled elsewhere.';
  const ex=operations.experience,e=ex.environment,shift=ex.shift;
  $('#conditions').textContent=e.light+' · '+e.weather+' · '+(e.fog>.1?'Visibility reduced — leave more room':e.wetness>.1?'Wet surface — allow more stopping distance':'Normal visibility');
  $('#conditions').dataset.light=e.light.toLowerCase();
- $('#shiftBanner').textContent=shift.name+' · '+shift.exits+' / '+shift.target+' served · shifts change automatically';
- $('#shiftName').textContent=shift.name;$('#shiftServed').textContent=shift.exits+' / '+shift.target+' vehicles served';$('#shiftProgress').value=Math.min(100,shift.exits/shift.target*100);
+ $('#shiftBanner').textContent=shift.name+' · '+shift.exits+' served · shifts change automatically';
+ $('#shiftName').textContent=shift.name;$('#shiftServed').textContent=shift.exits+' vehicles served this shift';
  $('#shiftRemaining').textContent='Next shift in ~'+Math.max(0,Math.ceil((shift.endsAt-sim.elapsed)/3))+'s at 1×';
- const report=ex.lastReport;if(report)$('#shiftReport').textContent='Last shift: '+report.exits+' served · '+Math.round(report.delay/60)+' vehicle-min delay · '+report.hardBrakes+' harsh brakes · '+report.score+'/100';
+ const p=ex.progress,samples=p.samples,last=samples.at(-1);$('#performanceServed').textContent=p.served;$('#performanceDelay').textContent=Math.round(p.delay/60);$('#performanceBrakes').textContent=p.hardBrakes;$('#performanceRecoveries').textContent=p.recoveries;
+ $('#recoveryProgress').textContent=p.recoveries?'Average recovery '+Math.round(p.recoveryTime/p.recoveries)+'s · '+p.nearbyRecoveries+' handled by nearby patrols':'Recovery times will appear after the first completed tow.';
+ const maximum=Math.max(1,...samples.map(a=>a.flow));$('#flowLine').setAttribute('points',samples.map((a,i)=>(samples.length===1?0:i/(samples.length-1)*300).toFixed(1)+','+(74-a.flow/maximum*64).toFixed(1)).join(' '));
+ let trend='Building a recent flow history…';if(last){trend='Recent flow: '+Math.round(last.flow)+' vehicles/min';if(samples.length>=4){const recent=(samples.at(-1).flow+samples.at(-2).flow)/2,previous=(samples.at(-3).flow+samples.at(-4).flow)/2;trend+=' · '+(recent>previous+1?'higher':recent<previous-1?'lower':'steady')+' compared with the previous readings';}}$('#performanceTrend').textContent=trend;
+ const report=ex.lastReport;if(report)$('#shiftReport').textContent='Last shift: '+report.exits+' served · '+Math.round(report.delay/60)+' vehicle-min delay · '+report.hardBrakes+' harsh brakes';
  updateRampEditor();
 }
 new ResizeObserver(positionJunctions).observe(canvas);updateOperations();
@@ -177,8 +179,6 @@ function paintScenery(ctx,geo){
    const start=exit?r.offStart+r.offDeparture:r.x-r.mergeLength,end=exit?r.offStart+r.offLength*.6:r.x-r.joinTaper;
    ctx.save();ctx.setLineDash([4,5]);ctx.strokeStyle='#d6e2c6';ctx.lineWidth=1;ctx.beginPath();
    for(let n=0;n<=30;n++){const x=start+(end-start)*n/30,px=geo.leftAt(x),py=y(x);if(n)ctx.lineTo(px,py);else ctx.moveTo(px,py);}ctx.stroke();ctx.restore();
-   const point=(exit?offRampPoint:slipRoadPoint)(geo,r,(start+end)/2);
-   ctx.save();ctx.fillStyle='#c8d8b9';ctx.font='bold 8px sans-serif';ctx.textAlign='right';ctx.fillText(exit?'DECEL / EXIT':'ACCEL',point.x-geo.laneWidth*.25-4,point.y+3);ctx.restore();
    const low=exit?r.offStart+r.offLength*.6:r.x-r.mergeLength-180,high=exit?r.offStart+r.offLength:r.x-r.mergeLength;
    const path=exit?offRampPoint:slipRoadPoint,edge=[];
    for(let n=0;n<=30;n++){const x=low+(high-low)*n/30,p=path(geo,r,x),inner=rampEdges(geo,p).inner;edge.push({inner,main:{x:geo.leftAt(x),y:y(x)}});}

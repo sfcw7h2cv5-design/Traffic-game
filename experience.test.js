@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Simulation,GANTRIES} from './model.js';
 import {environmentAt,driverProfile} from './experience.js';
-function setup(){const s=new Simulation(()=>.5);s.cars=[];s.incidents=[];s.waiting=0;s.nextArrival=s.nextIncident=s.nextEmergency=Infinity;const n=s.systems;n.work.startsAt=n.work.announceAt=n.roadblock.startsAt=n.phase.endsAt=Infinity;for(const r of n.ramps)r.nextArrival=Infinity;return s;}
+function setup(){const s=new Simulation(()=>.5);s.cars=[];s.incidents=[];s.nextRecoveryPatrol=Infinity;s.waiting=0;s.nextArrival=s.nextIncident=s.nextEmergency=Infinity;const n=s.systems;n.work.startsAt=n.work.announceAt=n.roadblock.startsAt=n.phase.endsAt=Infinity;for(const r of n.ramps)r.nextArrival=Infinity;return s;}
 test('day, twilight and night cycle automatically, with continuous rain and fog',()=>{
  assert.equal(environmentAt(0).light,'Daylight');assert.equal(environmentAt(600).light,'Twilight');assert.equal(environmentAt(750).light,'Night');assert.equal(environmentAt(1200).light,'Daylight');
  assert(environmentAt(240).wetness>.9);assert(environmentAt(720).fog>.9);
@@ -11,7 +11,7 @@ test('day, twilight and night cycle automatically, with continuous rain and fog'
 test('automatic shifts begin without selection and retain their completed report',()=>{
  const s=setup(),n=s.systems,e=n.experience;assert.equal(e.shift.name,'Morning commute');
  for(let i=0;i<25;i++)n.recordExit({});e.shift.delay=120;e.shift.hardBrakes=4;
- n.phase.endsAt=0;s.step(.1);assert.equal(e.completedShifts,1);assert.equal(e.lastReport.exits,25);assert.equal(e.lastReport.hardBrakes,4);assert(e.lastReport.score>=0&&e.lastReport.score<=100);
+ n.phase.endsAt=0;s.step(.1);assert.equal(e.completedShifts,1);assert.equal(e.lastReport.exits,25);assert.equal(e.lastReport.hardBrakes,4);assert.equal(e.lastReport.delay,120);assert.equal(e.lastReport.score,undefined);
  assert.equal(e.shift.name,'Rush-hour squeeze');assert.equal(e.shift.exits,0);assert.equal(e.shift.startsAt,s.elapsed);
 });
 test('shift braking events are counted once and remain counted after the rolling minute',()=>{
@@ -21,7 +21,7 @@ test('shift braking events are counted once and remain counted after the rolling
 test('warning boards detect queues and incidents upstream and clear when trouble passes',()=>{
  const s=setup(),e=s.systems.experience,g=GANTRIES[2];s.incidents=[{id:1,lane:0,x:g+700,length:5}];e.updateWarnings();assert.equal(e.warnings[2].kind,'incident');
  for(let i=0;i<3;i++)s.spawn(1,g+300+i*30,0);e.updateWarnings();assert.equal(e.warnings[2].kind,'queue');
- s.cars=[];s.incidents=[];e.updateWarnings();assert.equal(e.warnings[2],null);
+ s.cars=[];s.incidents=[];s.nextRecoveryPatrol=Infinity;e.updateWarnings();assert.equal(e.warnings[2],null);
  s.systems.ramps[1].mode='closed';e.updateWarnings();assert.equal(e.warnings[4].text,'J2 ENTRY CLOSED');
  assert(e.setWarning(2,'fog'));assert.equal(e.warnings[2].text,'FOG · SLOW DOWN');assert(e.setWarning(2,'clear'));assert.equal(e.warnings[2],null);assert(!e.setWarning(2,'invalid'));
 });
@@ -39,4 +39,12 @@ test('driver styles have coherent pace, gap and acceleration differences, with e
  const cautious=driverProfile(0,false),commuter=driverProfile(2,false);assert(cautious.pace<commuter.pace);assert(cautious.gap>commuter.gap);assert(cautious.power<commuter.power);
  const s=setup();s.id=0;const c=s.spawn(0,0,0);assert(c.driverStyle);const emergency=s.spawn(2,300,30,'police');assert.equal(emergency.driverStyle,undefined);assert.equal(emergency.desired,110*.44704);
  assert.equal(driverProfile(0,true).name,'Loaded HGV');
+});
+
+test('performance history is bounded and continues across shifts, with actual recovery times',()=>{
+ const s=setup(),e=s.systems.experience;
+ for(let i=0;i<30;i++){e.recordExit();s.elapsed+=30;e.afterStep(.1);}
+ assert.equal(e.progress.served,30);assert.equal(e.progress.samples.length,20);assert(e.progress.samples.every(p=>p.flow===2));
+ e.recordRecovery({started:s.elapsed-45,nearbyRecovery:true});assert.equal(e.progress.recoveries,1);assert.equal(e.progress.recoveryTime,45);assert.equal(e.progress.nearbyRecoveries,1);
+ e.finishShift();e.startShift();assert.equal(e.progress.served,30);assert.equal(e.shift.exits,0);
 });

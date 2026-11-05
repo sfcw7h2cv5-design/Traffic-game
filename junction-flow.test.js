@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {Simulation} from './model.js';
 function seeded(seed=17){let n=seed;return()=>((n=(n*1664525+1013904223)>>>0)/4294967296);}
 function setup(seed=17){
- const s=new Simulation(seeded(seed));s.cars=[];s.incidents=[];s.waiting=0;s.nextArrival=s.nextIncident=s.nextEmergency=Infinity;
+ const s=new Simulation(seeded(seed));s.cars=[];s.incidents=[];s.nextRecoveryPatrol=Infinity;s.waiting=0;s.nextArrival=s.nextIncident=s.nextEmergency=Infinity;
  const o=s.systems;o.work.announceAt=o.work.startsAt=o.roadblock.startsAt=o.phase.endsAt=Infinity;
  for(const r of o.ramps)r.nextArrival=Infinity;
  return s;
@@ -44,7 +44,7 @@ test('a matched arrival keeps moving throughout the whole joining taper',()=>{
 });
 test('courtesy gap requests are modest, stable and expire with the ramp closure',()=>{
  const s=setup(),o=s.systems,r=o.ramps[0],entry=r.x-r.joinTaper;
- const merger=s.spawn(0,entry-100,10);Object.assign(merger,{onRamp:r.id,rampMerging:false,slipRamp:r.id,desired:25});
+ const merger=s.spawn(0,entry-100,10);Object.assign(merger,{onRamp:r.id,rampMerging:false,slipRamp:r.id,truck:false,length:4.7,desired:25,v:10,courtesy:1,acceleration:1.3,headway:2.7,reaction:1});
  const front=s.spawn(0,entry+50,25),rear=s.spawn(0,entry-200,25);
  for(const c of [front,rear])Object.assign(c,{truck:false,length:4.7,desired:25,v:25,courtesy:1,cooldown:Infinity,decision:Infinity});
  o.updateRampCourtesy();

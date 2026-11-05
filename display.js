@@ -11,7 +11,7 @@ export function layoutSprites(cars,incidents,{left,laneWidth,project,laneX,angle
   const compactHeight=c.towing||c.kind==='recovery'?7:c.truck?6:c.kind==='ambulance'?4.5:c.emergency||c.blocker?4:3;
   const height=overview?Math.min(compactHeight,physicalLength*roadScale*.90):designHeight;
   const slip=c.offRamp!=null&&offRampPosition?offRampPosition(c):(c.onRamp!=null||c.slipRamp!=null)&&rampPosition?rampPosition(c):null;
-  const shoulderRejoin=c.lane>=0&&c.fromLane<0&&c.visualLane<0;
+  const shoulderRejoin=c.lane>=0&&c.fromLane<0&&c.visualLane<0||c.lane===-1&&c.fromLane===0&&!!c.laneChange;
   const roadX=laneX?laneX(c.x,c.lane<0?-1:c.visualLane):c.lane<0?left-10:left+(c.visualLane+.5)*laneWidth;
   const shoulderX=shoulderRejoin?(laneX?laneX(c.x,-1):left-10):0;
   const runningX=shoulderRejoin?(laneX?laneX(c.x,0):left+laneWidth/2):0;

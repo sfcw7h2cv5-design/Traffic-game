@@ -22,14 +22,15 @@ export class ShiftExperience{
  constructor(sim,network){
   this.sim=sim;this.network=network;this.enabled=true;this.environment=environmentAt(0);
   this.warningModes=network.gantries.map(()=> 'auto');this.warnings=network.gantries.map(()=>null);this.nextWarnings=0;this.lastReport=null;this.completedShifts=0;this.lastBrakeTime=sim.elapsed;
+  this.progress={served:0,delay:0,hardBrakes:0,recoveries:0,recoveryTime:0,nearbyRecoveries:0,samples:[]};this.lastSample={at:sim.elapsed,served:0,delay:0,hardBrakes:0};
   this.startShift();
  }
  startShift(){
   const n=this.network,s=this.sim,night=environmentAt(s.elapsed).darkness>.8,names=[night?'Night shift':'Morning commute',night?'Late traffic surge':'Rush-hour squeeze','Clear the tailbacks','Stadium departure','Keep the network moving'];
-  this.shift={name:names[n.phaseIndex%names.length],startsAt:s.elapsed,endsAt:n.phase.endsAt,target:Math.max(15,Math.round(n.phase.duration/60*15*n.phase.multiplier)),exits:0,delay:0,hardBrakes:0};
+  this.shift={name:names[n.phaseIndex%names.length],startsAt:s.elapsed,endsAt:n.phase.endsAt,exits:0,delay:0,hardBrakes:0};
  }
  finishShift(){
-  const s=this.shift;this.lastReport={...s,score:Math.round(Math.min(70,s.exits/s.target*70)+Math.max(0,15-s.hardBrakes*.3)+Math.max(0,15-s.delay/120))};this.completedShifts++;
+  this.lastReport={...this.shift};this.completedShifts++;
  }
  setWarning(index,mode){
   if(!this.network.gantries[index]||!['auto','clear','queue','incident','slippery','fog','junction'].includes(mode))return false;
@@ -66,12 +67,17 @@ export class ShiftExperience{
  afterStep(dt){
   if(!this.enabled)return;
   const s=this.sim;
+  let delay=0;
   for(const c of s.cars)if(!c.emergency&&c.lane>=0&&c.onRamp==null&&c.offRamp==null){
-   const free=Math.max(1,Math.min(c.desired,s.signalAt(c.x,c.lane).speed*.44704));this.shift.delay+=Math.max(0,1-c.v/free)*dt;
+   const free=Math.max(1,Math.min(c.desired,s.signalAt(c.x,c.lane).speed*.44704));delay+=Math.max(0,1-c.v/free)*dt;
   }
-  this.shift.delay+=(s.waiting+this.network.ramps.reduce((a,r)=>a+r.queue.length,0))*dt;
+  delay+=(s.waiting+this.network.ramps.reduce((a,r)=>a+r.queue.length,0))*dt;
   // Count events as they happen: the model's rolling-minute list later expires.
-  const recent=s.hardBrakeEvents.filter(t=>t>this.lastBrakeTime).length;this.shift.hardBrakes+=recent;this.lastBrakeTime=s.elapsed;
+  const recent=s.hardBrakeEvents.filter(t=>t>this.lastBrakeTime).length;this.shift.delay+=delay;this.shift.hardBrakes+=recent;this.lastBrakeTime=s.elapsed;
+  const p=this.progress;p.delay+=delay;p.hardBrakes+=recent;
+  const last=this.lastSample,span=s.elapsed-last.at;
+  if(span>=30){p.samples.push({at:s.elapsed,flow:(p.served-last.served)*60/span,delay:(p.delay-last.delay)/span,brakes:(p.hardBrakes-last.hardBrakes)*60/span});if(p.samples.length>20)p.samples.shift();this.lastSample={at:s.elapsed,served:p.served,delay:p.delay,hardBrakes:p.hardBrakes};}
  }
- recordExit(){if(this.enabled)this.shift.exits++;}
+ recordRecovery(incident){const p=this.progress;p.recoveries++;p.recoveryTime+=Math.max(0,this.sim.elapsed-(incident.started??this.sim.elapsed));if(incident.nearbyRecovery)p.nearbyRecoveries++;}
+ recordExit(){if(this.enabled){this.shift.exits++;this.progress.served++;}}
 }

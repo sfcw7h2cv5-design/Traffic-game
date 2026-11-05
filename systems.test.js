@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import {Simulation,GANTRIES,LENGTH} from './model.js';
 function seeded(seed=17){let n=seed;return()=>((n=(n*1664525+1013904223)>>>0)/4294967296);}
 function setup(){
- const s=new Simulation(seeded());s.cars=[];s.incidents=[];s.nextArrival=s.nextEmergency=s.nextIncident=Infinity;s.waiting=0;
+ const s=new Simulation(seeded());s.cars=[];s.incidents=[];s.nextRecoveryPatrol=Infinity;s.nextArrival=s.nextEmergency=s.nextIncident=Infinity;s.waiting=0;
  s.systems.work.announceAt=s.systems.work.startsAt=Infinity;s.systems.roadblock.startsAt=Infinity;
  s.systems.phase.endsAt=Infinity;for(const r of s.systems.ramps)r.nextArrival=Infinity;
  return s;
 }
 function run(s,seconds){for(let i=0;i<seconds*10;i++)s.step(.1);}
-function queuedCar(s,r){const d=r.queue.length?r.queue.at(-1).rampDistance+r.queue.at(-1).length+8:r.mergeLength;const c=s.spawn(0,r.x-d,0);s.cars.pop();c.rampDistance=d;c.slipRamp=r.id;r.queue.push(c);return c;}
+function queuedCar(s,r){const d=r.queue.length?r.queue.at(-1).rampDistance+r.queue.at(-1).length+8:r.mergeLength;const c=s.spawn(0,r.x-d,0);s.cars.pop();Object.assign(c,{truck:false,length:4.7,desired:30,courtesy:1,acceleration:1.3,headway:2,reaction:1});c.rampDistance=d;c.slipRamp=r.id;r.queue.push(c);return c;}
 test('closed slip road holds vehicles; open releases through a safe gap',()=>{
  const s=setup(),r=s.systems.ramps[0];const c=queuedCar(s,r);
  s.systems.setRampMode(0,'closed');run(s,10);assert(r.queue.includes(c));assert(!s.cars.includes(c));
@@ -37,16 +37,16 @@ test('roadworks wait for protected empty lanes, pause if protection is removed, 
  const left=w.remaining;s.signals[g][0].mode='open';run(s,2);assert.equal(w.status,'safety-paused');assert.equal(w.remaining,left);
  s.signals[g][0].mode='closed';run(s,5);assert.equal(w.status,'complete');assert.equal(o.completedWorks,1);
  assert(!s.incidents.some(i=>i.type==='roadworks'));run(s,5);assert.equal(o.completedWorks,1);
- assert.equal(s.signals[g][0].mode,'closed');assert(o.objectives.find(i=>i.id==='works').complete);
+ assert.equal(s.signals[g][0].mode,'closed');
 });
 test('police rolling block uses three real vehicles, only deploys crews into an empty zone, and releases',()=>{
  const s=setup(),o=s.systems,b=o.roadblock;b.startsAt=0;
  const occupant=s.spawn(0,b.x-20,0);occupant.desired=.01;occupant.cooldown=Infinity;occupant.decision=Infinity;
  run(s,.1);assert.equal(b.vehicleIds.length,3);assert.equal(b.status,'rolling');
  for(const id of b.vehicleIds)assert(s.cars.find(c=>c.id===id).desired<10);
- s.cars=s.cars.filter(c=>c.id!==occupant.id);run(s,.1);assert.equal(b.status,'clearing');
+ s.cars=s.cars.filter(c=>c.id!==occupant.id);run(s,b.minRolling+.1);assert.equal(b.status,'clearing');
  assert(s.incidents.some(i=>i.type==='police-clearance'&&i.bodies.length===3));
- run(s,25);assert.equal(b.status,'complete');assert(!s.incidents.some(i=>i.type==='police-clearance'));
+ run(s,b.duration+.2);assert.equal(b.status,'complete');assert(!s.incidents.some(i=>i.type==='police-clearance'));
  for(const id of b.vehicleIds){const c=s.cars.find(c=>c.id===id);assert(c.emergency);assert(!c.blocker);assert(c.desired>45);}
 });
 test('automatic rush hour and stadium surges change demand without user scenario selection',()=>{
@@ -54,12 +54,12 @@ test('automatic rush hour and stadium surges change demand without user scenario
  o.phase.endsAt=0;run(s,.1);assert.equal(o.phase.name,'Demand easing');
  o.phase.endsAt=0;run(s,.1);assert.equal(o.phase.name,'Stadium traffic');assert(o.phase.multiplier>=2);
 });
-test('optional shift goals track real exits and cleared queues without ending the simulation',()=>{
- const s=setup(),o=s.systems;s.spawn(2,LENGTH-1,35,'ambulance');run(s,1);
- assert(o.objectives.find(x=>x.id==='ambulance').complete);assert.equal(o.totalExited,1);
+test('ongoing performance tracks real service and delay without completion checkboxes',()=>{
+ const s=setup(),o=s.systems,p=o.experience.progress;s.spawn(2,LENGTH-1,35,'ambulance');run(s,1);
+ assert.equal(o.totalExited,1);assert.equal(p.served,1);assert.equal(o.objectives,undefined);
  s.cars=[];for(let i=0;i<5;i++){const c=s.spawn(0,3000+i*25,0);c.desired=.01;c.cooldown=Infinity;c.decision=Infinity;}
- run(s,.1);assert(o.queueSeen);s.cars=[];run(s,22);
- assert(o.objectives.find(x=>x.id==='queue').complete);const time=s.elapsed;run(s,2);assert(s.elapsed>time);
+ run(s,1);assert(p.delay>4);const delay=p.delay;s.cars=[];run(s,35);
+ assert(p.delay>=delay);assert(p.samples.length>0);assert.equal(p.served,1);
 });
 test('new junctions and scheduled operations maintain separation and forward motion together',()=>{
  const s=new Simulation(seeded(73));s.nextIncident=s.nextEmergency=Infinity;
@@ -235,4 +235,16 @@ test('approach matching respects HGV desired speeds and posted approach limits',
   for(let n=0;n<600;n++){s.step(.1);assert(c.v<=ceiling+1e-8);if(s.cars.includes(c)){joined=true;break;}}
   assert(joined);assert(c.v>ceiling-1);
  }
+});
+
+test('police holds vary along the motorway, last through clearance and recur elsewhere',()=>{
+ const locations=new Set();for(let seed=1;seed<=12;seed++){const s=new Simulation(seeded(seed));locations.add(Math.floor(s.systems.roadblock.x/2000));assert(s.systems.roadblock.x>2000&&s.systems.roadblock.x<19500);}
+ assert(locations.size>=4);assert([...locations].some(x=>x>=6));
+ const s=setup(),o=s.systems,b=o.roadblock;b.startsAt=0;o.updateRoadblock();assert.equal(b.status,'rolling');assert(b.vehicleIds.every(id=>s.cars.find(c=>c.id===id).x>100));
+ s.elapsed=b.formedAt+10;o.updateRoadblock();assert.equal(b.status,'rolling');s.elapsed=b.formedAt+b.minRolling+.1;o.updateRoadblock();assert.equal(b.status,'clearing');assert(b.workEndsAt-s.elapsed>=60);
+ s.elapsed=b.workEndsAt+.1;o.updateRoadblock();assert.equal(b.status,'complete');const old=b.x;s.cars=[];s.incidents=[];s.elapsed=b.nextAt+.1;o.updateRoadblock();assert.equal(b.status,'scheduled');assert(Math.abs(b.x-old)>1000);
+});
+test('police formation waits for safe space rather than appearing inside traffic',()=>{
+ const s=setup(),o=s.systems,b=o.roadblock;b.startsAt=0;for(let lane=0;lane<3;lane++)for(let x=b.x-1600;x<b.x;x+=20){const c=s.spawn(lane,x,15);c.length=4.7;}
+ o.updateRoadblock();assert.equal(b.status,'scheduled');assert.equal(b.vehicleIds.length,0);
 });
